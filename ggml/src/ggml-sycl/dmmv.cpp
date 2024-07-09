@@ -227,7 +227,7 @@ static void dequantize_mul_mat_vec_q2_k(const void *__restrict__ vx,
 
     // sum up partial sums and write back result
 #pragma unroll
-    for (int mask = WARP_SIZE / 2; mask > 0; mask >>= 1) {
+    for (int mask = QK_WARP_SIZE / 2; mask > 0; mask >>= 1) {
         tmp +=
             dpct::permute_sub_group_by_xor(item_ct1.get_sub_group(), tmp, mask);
     }
@@ -346,7 +346,7 @@ static void dequantize_mul_mat_vec_q3_k(const void *__restrict__ vx,
 
     // sum up partial sums and write back result
 #pragma unroll
-    for (int mask = WARP_SIZE / 2; mask > 0; mask >>= 1) {
+    for (int mask = QK_WARP_SIZE / 2; mask > 0; mask >>= 1) {
         tmp +=
             dpct::permute_sub_group_by_xor(item_ct1.get_sub_group(), tmp, mask);
     }
@@ -499,7 +499,7 @@ static void dequantize_mul_mat_vec_q4_k(const void *__restrict__ vx,
 
     // sum up partial sums and write back result
 #pragma unroll
-    for (int mask = WARP_SIZE / 2; mask > 0; mask >>= 1) {
+    for (int mask = QK_WARP_SIZE / 2; mask > 0; mask >>= 1) {
         tmp +=
             dpct::permute_sub_group_by_xor(item_ct1.get_sub_group(), tmp, mask);
     }
@@ -633,7 +633,7 @@ static void dequantize_mul_mat_vec_q5_k(const void *__restrict__ vx,
 
     // sum up partial sums and write back result
 #pragma unroll
-    for (int mask = WARP_SIZE / 2; mask > 0; mask >>= 1) {
+    for (int mask = QK_WARP_SIZE / 2; mask > 0; mask >>= 1) {
         tmp +=
             dpct::permute_sub_group_by_xor(item_ct1.get_sub_group(), tmp, mask);
     }
@@ -748,7 +748,7 @@ static void dequantize_mul_mat_vec_q6_k(const void * __restrict__ vx, const floa
 
     // sum up partial sums and write back result
 #pragma unroll
-    for (int mask = WARP_SIZE / 2; mask > 0; mask >>= 1) {
+    for (int mask = QK_WARP_SIZE / 2; mask > 0; mask >>= 1) {
         tmp +=
             dpct::permute_sub_group_by_xor(item_ct1.get_sub_group(), tmp, mask);
     }
@@ -873,10 +873,10 @@ static void dequantize_mul_mat_vec_q2_K_sycl(const void *vx, const float *y,
     const int ny = 2; // very slightly faster than 1 even when K_QUANTS_PER_ITERATION = 2
     const int block_num_y = (nrows + ny - 1) / ny;
     const sycl::range<3> block_nums(1, 1, block_num_y);
-    const sycl::range<3> block_dims(1, ny, WARP_SIZE);
+    const sycl::range<3> block_dims(1, ny, QK_WARP_SIZE);
     stream->parallel_for(
         sycl::nd_range<3>(block_nums * block_dims, block_dims),
-        [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+        [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(QK_WARP_SIZE)]] {
             dequantize_mul_mat_vec_q2_k(vx, y, dst, ncols, nrows, item_ct1);
         });
 }
@@ -889,10 +889,10 @@ static void dequantize_mul_mat_vec_q3_K_sycl(const void *vx, const float *y,
     const int ny = 2 / K_QUANTS_PER_ITERATION;
     const int block_num_y = (nrows + ny - 1) / ny;
     const sycl::range<3> block_nums(1, 1, block_num_y);
-    const sycl::range<3> block_dims(1, ny, WARP_SIZE);
+    const sycl::range<3> block_dims(1, ny, QK_WARP_SIZE);
     stream->parallel_for(
         sycl::nd_range<3>(block_nums * block_dims, block_dims),
-        [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+        [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(QK_WARP_SIZE)]] {
             dequantize_mul_mat_vec_q3_k(vx, y, dst, ncols, nrows, item_ct1);
         });
 }
@@ -905,10 +905,10 @@ static void dequantize_mul_mat_vec_q4_K_sycl(const void *vx, const float *y,
     const int ny = 2 / K_QUANTS_PER_ITERATION;
     const int block_num_y = (nrows + ny - 1) / ny;
     const sycl::range<3> block_nums(1, 1, block_num_y);
-    const sycl::range<3> block_dims(1, ny, WARP_SIZE);
+    const sycl::range<3> block_dims(1, ny, QK_WARP_SIZE);
     stream->parallel_for(
         sycl::nd_range<3>(block_nums * block_dims, block_dims),
-        [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+        [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(QK_WARP_SIZE)]] {
             dequantize_mul_mat_vec_q4_k(vx, y, dst, ncols, nrows, item_ct1);
         });
 }
@@ -918,10 +918,10 @@ static void dequantize_mul_mat_vec_q5_K_sycl(const void *vx, const float *y,
                                              const int nrows,
                                              dpct::queue_ptr stream) {
     GGML_ASSERT(ncols % QK_K == 0);
-    const sycl::range<3> block_dims(1, 1, WARP_SIZE);
+    const sycl::range<3> block_dims(1, 1, QK_WARP_SIZE);
     stream->parallel_for(
         sycl::nd_range<3>(sycl::range<3>(1, 1, nrows) * block_dims, block_dims),
-        [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+        [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(QK_WARP_SIZE)]] {
             dequantize_mul_mat_vec_q5_k(vx, y, dst, ncols, item_ct1);
         });
 }
@@ -934,10 +934,10 @@ static void dequantize_mul_mat_vec_q6_K_sycl(const void *vx, const float *y,
     const int ny = 2 / K_QUANTS_PER_ITERATION;
     const int block_num_y = (nrows + ny - 1) / ny;
     const sycl::range<3> block_nums(1, 1, block_num_y);
-    const sycl::range<3> block_dims(1, ny, WARP_SIZE);
+    const sycl::range<3> block_dims(1, ny, QK_WARP_SIZE);
     stream->parallel_for(
         sycl::nd_range<3>(block_nums * block_dims, block_dims),
-        [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+        [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(QK_WARP_SIZE)]] {
             dequantize_mul_mat_vec_q6_k(vx, y, dst, ncols, nrows, item_ct1);
         });
 }
