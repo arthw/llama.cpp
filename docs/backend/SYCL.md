@@ -43,7 +43,7 @@ The following release is verified with good quality:
 |c16f01b97558440cc9df1472f8093d088338bf6c| ||Arc770/Linux/oneAPI 2024.2|
 |fb76ec31a9914b7761c1727303ab30380fd4f05c|b3038 |[llama-b3038-bin-win-sycl-x64.zip](https://github.com/ggerganov/llama.cpp/releases/download/b3038/llama-b3038-bin-win-sycl-x64.zip) |Arc770/Linux/oneAPI 2024.1<br>MTL Arc GPU/Windows 11/oneAPI 2024.1|
 
-For CI and performance test summary, please refer to [llama.cpp CI for SYCL Backend] (https://github.com/NeoZhangJianyu/ci_log/tree/main/llama.cpp).
+For CI and performance test summary, please refer to [llama.cpp CI for SYCL Backend](https://github.com/NeoZhangJianyu/ci_log/tree/main/llama.cpp).
 
 ## News
 
