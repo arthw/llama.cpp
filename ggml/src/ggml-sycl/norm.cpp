@@ -228,7 +228,7 @@ static void norm_f32_sycl(const float* x, float* dst, const int ncols,
 
 static void group_norm_f32_sycl(const float* x, float* dst,
     const int num_groups, const float eps, const int group_size,
-    const int ne_elements, queue_ptr stream, int device) {
+    const int ne_elements, queue_ptr stream, int device_id) {
     if (group_size < 1024) {
         const sycl::range<3> block_dims(1, 1, WARP_SIZE);
         stream->submit([&](sycl::handler& cgh) {
