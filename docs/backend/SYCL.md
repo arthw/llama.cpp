@@ -20,17 +20,13 @@
 **oneAPI** is an open ecosystem and a standard-based specification, supporting multiple architectures including but not limited to intel CPUs, GPUs and FPGAs. The key components of the oneAPI ecosystem include:
 
 - **DPCPP** *(Data Parallel C++)*: The primary oneAPI SYCL implementation, which includes the icpx/icx Compilers.
-- **oneAPI Libraries**: A set of highly optimized libraries targeting multiple domains *(e.g. oneMKL - Math Kernel Library)*.
+- **oneAPI Libraries**: A set of highly optimized libraries targeting multiple domains *(e.g. oneMKL and oneDNN)*.
 - **oneAPI LevelZero**: A high performance low level interface for fine-grained control over intel iGPUs and dGPUs.
 - **Nvidia & AMD Plugins**: These are plugins extending oneAPI's DPCPP support to SYCL on Nvidia and AMD GPU targets.
 
 ### Llama.cpp + SYCL
 
 The llama.cpp SYCL backend is designed to support **Intel GPU** firstly. Based on the cross-platform feature of SYCL, it could support other vendor GPUs: Nvidia GPU (*AMD GPU coming*).
-
-When targeting **Intel CPU**, it is recommended to use llama.cpp for [Intel oneMKL](README.md#intel-onemkl) backend.
-
-It has the similar design of other llama.cpp BLAS-based paths such as *OpenBLAS, cuBLAS, etc..*. In beginning work, the oneAPI's [SYCLomatic](https://github.com/oneapi-src/SYCLomatic) open-source migration tool (Commercial release [Intel® DPC++ Compatibility Tool](https://www.intel.com/content/www/us/en/developer/tools/oneapi/dpc-compatibility-tool.html)) was used for this purpose.
 
 ## Recommended Release
 
@@ -46,6 +42,9 @@ The following release is verified with good quality:
 For CI and performance test summary, please refer to [llama.cpp CI for SYCL Backend](https://github.com/NeoZhangJianyu/ci_log/tree/main/llama.cpp).
 
 ## News
+
+- 2024.8
+  - Use oneDNN as the default GEMM library, improve the compatibility for new Intel GPUs.
 
 - 2024.6-7
   - Performance is increased: 37 -> 42.9 tokens/s of llama-2-7b.Q4_0 on Arc770.
@@ -201,7 +200,7 @@ Please follow the instructions for downloading and installing the Toolkit for Li
 
 Following guidelines/code snippets assume the default installation values. Otherwise, please make sure the necessary changes are reflected where applicable.
 
-Upon a successful installation, SYCL is enabled for the available intel devices, along with relevant libraries such as oneAPI MKL for intel GPUs.
+Upon a successful installation, SYCL is enabled for the available intel devices, along with relevant libraries such as oneAPI oneDNN for Intel GPUs.
 
 - **Adding support to Nvidia GPUs**
 
@@ -259,8 +258,6 @@ or
 ```sh
 # Export relevant ENV variables
 source /opt/intel/oneapi/setvars.sh
-
-# Build LLAMA with MKL BLAS acceleration for intel GPU
 
 # Option 1: Use FP32 (recommended for better performance in most cases)
 cmake -B build -DGGML_SYCL=ON -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx
