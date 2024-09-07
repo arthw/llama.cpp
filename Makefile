@@ -926,7 +926,6 @@ OBJ_COMMON = \
 	common/ngram-cache.o \
 	common/sampling.o \
 	common/train.o \
-	common/grammar-parser.o \
 	common/build-info.o \
 	common/json-schema-to-grammar.o
 
@@ -1164,11 +1163,6 @@ common/sampling.o: \
 common/console.o: \
 	common/console.cpp \
 	common/console.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-common/grammar-parser.o: \
-	common/grammar-parser.cpp \
-	common/grammar-parser.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 common/json-schema-to-grammar.o: \
