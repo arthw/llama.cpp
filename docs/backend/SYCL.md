@@ -699,6 +699,14 @@ The parameters about device choose of llama.cpp works with SYCL backend rule to 
 
   It's same for other projects including llama.cpp SYCL backend.
 
+- Meet issue: `Native API failed. Native API returns: -6 (PI_ERROR_OUT_OF_HOST_MEMORY) -6 (PI_ERROR_OUT_OF_HOST_MEMORY) -999 (UNKNOWN PI error)` or `failed to allocate SYCL0 buffer`
+
+  Device Memory is not enough.
+
+  |Reason|Solution|
+  |-|-|
+  |Default Context is too big. It leads to more memory usage.|Set `-c 8192` or smaller value.|
+  |Model is big and require more memory than device's.|Choose smaller quantized model, like Q5 -> Q4;<br>Use more than one devices to load model.|
 
 ### **GitHub contribution**:
 Please add the **[SYCL]** prefix/tag in issues/PRs titles to help the SYCL-team check/address them without delay.
