@@ -38,11 +38,11 @@ GGML_BACKEND_API void ggml_backend_sycl_get_device_description(int device,
 GGML_BACKEND_API int  ggml_backend_sycl_get_device_count();
 GGML_BACKEND_API void ggml_backend_sycl_get_device_memory(int device, size_t *free, size_t *total);
 
-GGML_API int ggml_backend_sycl_get_device_index(int device_id);
-GGML_API int ggml_backend_sycl_get_device_id(int index);
-GGML_API void ggml_sycl_set_single_device(int main_gpu_id);
+GGML_BACKEND_API int ggml_backend_sycl_get_device_index(int device_id);
+GGML_BACKEND_API int ggml_backend_sycl_get_device_id(int index);
+GGML_BACKEND_API void ggml_sycl_set_single_device(int main_gpu_id);
 
-GGML_API void ggml_backend_sycl_set_single_device_mode(int main_gpu_id);
+GGML_BACKEND_API void ggml_backend_sycl_set_single_device_mode(int main_gpu_id);
 
 // SYCL doesn't support registering host memory, keep here for reference
 // GGML_BACKEND_API bool ggml_backend_sycl_register_host_buffer(void * buffer, size_t size);

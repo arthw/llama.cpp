@@ -51,7 +51,7 @@ int    ggml_backend_sycl_get_device(ggml_backend_t backend);
 static bool ggml_backend_buffer_is_sycl_split(ggml_backend_buffer_t buffer);
 static bool ggml_backend_buffer_is_sycl(ggml_backend_buffer_t buffer);
 
-GGML_API void ggml_backend_sycl_get_gpu_list(int *id_list, int max_len) try {
+GGML_BACKEND_API void ggml_backend_sycl_get_gpu_list(int *id_list, int max_len) try {
     GGML_SYCL_DEBUG("[SYCL] call ggml_backend_sycl_get_gpu_list\n");
     for(int i=0;i<max_len;i++) id_list[i] = -1;
 
@@ -3892,12 +3892,12 @@ bool ggml_sycl_compute_forward(ggml_backend_sycl_context & ctx, struct ggml_tens
     return true;
 }
 
-GGML_API int ggml_backend_sycl_get_device_id(int index) {
+GGML_BACKEND_API int ggml_backend_sycl_get_device_id(int index) {
     GGML_SYCL_DEBUG("[SYCL] call ggml_backend_sycl_get_device_id\n");
     return ggml_sycl_info().get_device_id(index);
 }
 
-GGML_API void   ggml_sycl_get_gpu_list(int *id_list, int max_len) try {
+GGML_BACKEND_API void   ggml_sycl_get_gpu_list(int *id_list, int max_len) try {
     GGML_SYCL_DEBUG("[SYCL] call ggml_sycl_get_gpu_list\n");
     for(int i=0;i<max_len;i++) id_list[i] = -1;
 
@@ -3928,7 +3928,7 @@ catch (sycl::exception const &exc) {
   std::exit(1);
 }
 
-GGML_API void ggml_backend_sycl_get_device_description(int device_id, char *description,
+GGML_BACKEND_API void ggml_backend_sycl_get_device_description(int device_id, char *description,
                                       size_t description_size) try {
     GGML_SYCL_DEBUG("[SYCL] call ggml_backend_sycl_get_device_description\n");
     dpct::device_info prop;
@@ -4593,7 +4593,7 @@ ggml_backend_t ggml_backend_sycl_init(int device_id) {
     return sycl_backend;
 }
 
-GGML_API void ggml_backend_sycl_set_single_device_mode(int main_gpu_id) {
+GGML_BACKEND_API void ggml_backend_sycl_set_single_device_mode(int main_gpu_id) {
 
     GGML_SYCL_DEBUG("[SYCL] call ggml_backend_sycl_set_single_device_mode\n");
     fprintf(stderr, "ggml_backend_sycl_set_single_device: use single device: [%d]\n", main_gpu_id);
