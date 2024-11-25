@@ -4555,16 +4555,17 @@ ggml_backend_reg_t ggml_backend_sycl_reg() {
                 dev_ctx->description = prop.get_name();
 
                 ggml_backend_dev_t dev = new ggml_backend_device {
-                    /* .interface = */ ggml_backend_sycl_device_interface,
-                    /* .reg       = */ &reg,
-                    /* .context   = */ dev_ctx
+                    /* .iface       = */ ggml_backend_sycl_device_interface,
+                    /* .reg         = */ &reg,
+                    /* .context     = */ dev_ctx
                 };
                 ctx->devices.push_back(dev);
             }
 
             reg = ggml_backend_reg {
-                /* .interface = */ ggml_backend_sycl_reg_interface,
-                /* .context   = */ ctx
+                /* .api_version = */ GGML_BACKEND_API_VERSION,
+                /* .iface       = */ ggml_backend_sycl_reg_interface,
+                /* .context     = */ ctx
             };
         }
 
@@ -4599,3 +4600,4 @@ GGML_BACKEND_API void ggml_backend_sycl_set_single_device_mode(int main_gpu_id) 
     fprintf(stderr, "ggml_backend_sycl_set_single_device: use single device: [%d]\n", main_gpu_id);
     ggml_sycl_info(main_gpu_id);
 }
+GGML_BACKEND_DL_IMPL(ggml_backend_sycl_reg)
