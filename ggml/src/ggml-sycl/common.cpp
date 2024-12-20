@@ -85,7 +85,7 @@ void print_device_detail_part1(int id, sycl::device &device, std::string device_
 
     auto global_mem_size = prop.get_global_mem_size()/1000000;
 
-    fprintf(stderr, "|%2d|%19s|%4s|%39s|%14luM|\n", id, device_type.c_str(), version.c_str(),
+    fprintf(stderr, "|%2d|%19s|%5s|%39s|%14luM|\n", id, device_type.c_str(), version.c_str(),
         name.c_str(), global_mem_size);
 }
 
@@ -107,8 +107,8 @@ void ggml_backend_sycl_print_sycl_devices() {
     std::map<std::string, size_t> DeviceNums;
     fprintf(stderr, "found %d SYCL devices:\n", device_count);
     fprintf(stderr, "Part1:\n");
-    fprintf(stderr, "|ID|        Device Type| Ver|                                   Name|Global mem size|\n");
-    fprintf(stderr, "|--|-------------------|----|---------------------------------------|---------------|\n");
+    fprintf(stderr, "|ID|        Device Type|  Ver|                                   Name|Global mem size|\n");
+    fprintf(stderr, "|--|-------------------|-----|---------------------------------------|---------------|\n");
     for (int id = 0; id < device_count; ++id) {
         sycl::device device = dpct::dev_mgr::instance().get_device(id);
         sycl::backend backend = device.get_backend();
