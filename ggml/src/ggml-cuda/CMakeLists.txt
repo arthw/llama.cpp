@@ -12,7 +12,7 @@ if (CUDAToolkit_FOUND)
         # 61     == Pascal, __dp4a instruction (per-byte integer dot product)
         # 70     == V100, FP16 tensor cores
         # 75     == Turing, int8 tensor cores
-        if (GGML_NATIVE AND CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.6")
+        if (GGML_NATIVE AND CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.6" AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
             set(CMAKE_CUDA_ARCHITECTURES "native")
         elseif(GGML_CUDA_F16 OR GGML_CUDA_DMMV_F16)
             set(CMAKE_CUDA_ARCHITECTURES "60;61;70;75")
@@ -46,13 +46,10 @@ if (CUDAToolkit_FOUND)
         list(APPEND GGML_SOURCES_CUDA ${SRCS})
     endif()
 
-    add_library(ggml-cuda
-                ${GGML_HEADERS_CUDA}
-                ${GGML_SOURCES_CUDA}
-                )
-
-    target_link_libraries(ggml-cuda PRIVATE ggml-base)
-    target_include_directories(ggml-cuda PRIVATE . ..)
+    ggml_add_backend_library(ggml-cuda
+                             ${GGML_HEADERS_CUDA}
+                             ${GGML_SOURCES_CUDA}
+                            )
 
     add_compile_definitions(GGML_CUDA_PEER_MAX_BATCH_SIZE=${GGML_CUDA_PEER_MAX_BATCH_SIZE})
 
@@ -135,7 +132,7 @@ if (CUDAToolkit_FOUND)
 
         message("-- CUDA host compiler is ${CUDA_CCID} ${CUDA_CCVER}")
 
-        get_flags(${CUDA_CCID} ${CUDA_CCVER})
+        ggml_get_flags(${CUDA_CCID} ${CUDA_CCVER})
         list(APPEND CUDA_CXX_FLAGS ${CXX_FLAGS} ${GF_CXX_FLAGS})  # This is passed to -Xcompiler later
     endif()
 
@@ -149,7 +146,7 @@ if (CUDAToolkit_FOUND)
         list(APPEND CUDA_FLAGS -Xcompiler ${CUDA_CXX_FLAGS_JOINED})
     endif()
 
-    add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:${CUDA_FLAGS}>")
+    target_compile_options(ggml-cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${CUDA_FLAGS}>")
 else()
     message(FATAL_ERROR "CUDA Toolkit not found")
 endif()

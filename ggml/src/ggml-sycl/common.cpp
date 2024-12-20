@@ -11,6 +11,7 @@
 //
 
 #include "common.hpp"
+#include "ggml-impl.h"
 
 int get_current_device_id() {
   return dpct::dev_mgr::instance().current_device_id();
@@ -32,11 +33,7 @@ void* ggml_sycl_host_malloc(size_t size) try {
 //  printf("zjy ggml_sycl_host_malloc ptr=%p queue=%p size=%lu \n", ptr,q, size);
   if (err != 0) {
     // clear the error
-    fprintf(
-        stderr,
-        "WARNING: failed to allocate %.2f MB of pinned memory: %s\n",
-        size / 1024.0 / 1024.0,
-        "syclGetErrorString is not supported");
+    GGML_LOG_ERROR("WARNING: failed to allocate %.2f MB of pinned memory: %s\n", size / 1024.0 / 1024.0,    "syclGetErrorString is not supported");
     return nullptr;
   }
 
@@ -88,7 +85,7 @@ void print_device_detail_part1(int id, sycl::device &device, std::string device_
 
     auto global_mem_size = prop.get_global_mem_size()/1000000;
 
-    fprintf(stderr, "|%2d|%19s|%4s|%39s|%14luM|\n", id, device_type.c_str(), version.c_str(),
+    fprintf(stderr, "|%2d|%19s|%5s|%39s|%14luM|\n", id, device_type.c_str(), version.c_str(),
         name.c_str(), global_mem_size);
 }
 
@@ -110,8 +107,8 @@ void ggml_backend_sycl_print_sycl_devices() {
     std::map<std::string, size_t> DeviceNums;
     fprintf(stderr, "found %d SYCL devices:\n", device_count);
     fprintf(stderr, "Part1:\n");
-    fprintf(stderr, "|ID|        Device Type| Ver|                                   Name|Global mem size|\n");
-    fprintf(stderr, "|--|-------------------|----|---------------------------------------|---------------|\n");
+    fprintf(stderr, "|ID|        Device Type|  Ver|                                   Name|Global mem size|\n");
+    fprintf(stderr, "|--|-------------------|-----|---------------------------------------|---------------|\n");
     for (int id = 0; id < device_count; ++id) {
         sycl::device device = dpct::dev_mgr::instance().get_device(id);
         sycl::backend backend = device.get_backend();
@@ -212,17 +209,11 @@ int64_t downsample_sycl_global_range(int64_t accumulate_block_num, int64_t block
 void ggml_sycl_op_flatten(ggml_backend_sycl_context & ctx, const ggml_tensor *src0,
                                  const ggml_tensor *src1, ggml_tensor *dst,
                                  const ggml_sycl_op_flatten_t op) try {
-    const int64_t nrows0 = ggml_nrows(src0);
 
     const bool use_src1 = src1 != nullptr;
-    const int64_t nrows1 = use_src1 ? ggml_nrows(src1) : 1;
 
     GGML_ASSERT(!use_src1 || src1->backend != GGML_BACKEND_TYPE_GPU_SPLIT);
     GGML_ASSERT(              dst->backend != GGML_BACKEND_TYPE_GPU_SPLIT);
-
-    ggml_tensor_extra_gpu * src0_extra =            (ggml_tensor_extra_gpu *) src0->extra;
-    ggml_tensor_extra_gpu * src1_extra = use_src1 ? (ggml_tensor_extra_gpu *) src1->extra : nullptr;
-    ggml_tensor_extra_gpu * dst_extra  =            (ggml_tensor_extra_gpu *)  dst->extra;
 
     // dd = data device
     float * src0_ddf = (float *) src0->data;
