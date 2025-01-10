@@ -197,6 +197,10 @@ ggml_sycl_device_info &ggml_sycl_info(int main_gpu_id) {
 }
 
 //--ggml_sycl_device_info--
+bool gpu_has_xmx(sycl::device &dev) {
+    return dev.has(sycl::aspect::ext_intel_matrix);
+}
+
 int64_t downsample_sycl_global_range(int64_t accumulate_block_num, int64_t block_size) {
   const int64_t max_range = std::numeric_limits<int>::max();
   int64_t sycl_down_blk_size = block_size;
