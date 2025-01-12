@@ -3724,7 +3724,6 @@ catch (sycl::exception const &exc) {
 }
 
 bool ggml_sycl_compute_forward(ggml_backend_sycl_context & ctx, struct ggml_tensor * dst) {
-    if (!g_sycl_loaded) return false;
 
     if (dst->src[0] != nullptr && ggml_backend_buffer_is_sycl_split(dst->src[0]->buffer)) {
         ggml_sycl_set_peer_access(dst->src[1]->ne[1], ctx.device);
