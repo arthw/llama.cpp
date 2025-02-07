@@ -9432,7 +9432,6 @@ static struct llama_model * llama_model_load_from_file_impl(
         struct llama_model_params params) {
     ggml_time_init();
 
-    llama_model * model = new llama_model(params);
 
     unsigned cur_percentage = 0;
     if (params.progress_callback == NULL) {
@@ -9450,6 +9449,8 @@ static struct llama_model * llama_model_load_from_file_impl(
             return true;
         };
     }
+
+    llama_model * model = new llama_model(params);
 
     // create list of devices to use with this model
     if (params.devices) {
