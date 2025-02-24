@@ -38,7 +38,10 @@
 
 void ggml_sycl_host_free(void* ptr);
 
+
 extern int g_ggml_sycl_debug;
+extern int g_ggml_sycl_disable_optimize;
+
 #define GGML_SYCL_DEBUG(...)        \
   do {                              \
     if (g_ggml_sycl_debug)          \
@@ -237,20 +240,26 @@ struct ggml_tensor_extra_gpu {
                                        // tensors
   dpct::event_ptr events[GGML_SYCL_MAX_DEVICES]
                         [GGML_SYCL_MAX_STREAMS]; // events for synchronizing multiple GPUs
+  optimize_feature optimized_feature;
 };
+
+void release_extra_gpu(ggml_tensor_extra_gpu * extra, std::vector<queue_ptr> streams={});
 
 struct ggml_backend_sycl_context {
     int device;
     std::string name;
+    optimize_feature opt_feature;
+    bool optimized_graph=false;
 
     queue_ptr qptrs[GGML_SYCL_MAX_DEVICES][GGML_SYCL_MAX_STREAMS] = { { nullptr } };
 
     explicit ggml_backend_sycl_context(struct ggml_sycl_device_info &sycl_device_info, int id) :
         device(id),
         name(GGML_SYCL_NAME + std::to_string(device)) {
-            for (int i=0;i<GGML_SYCL_MAX_STREAMS; i++){
-                qptrs[id][i] = sycl_device_info.infos[id].qptrs[i];
-            }
+        for (int i=0;i<GGML_SYCL_MAX_STREAMS; i++){
+            qptrs[id][i] = sycl_device_info.infos[id].qptrs[i];
+        }
+        opt_feature = sycl_device_info.infos[id].opt_feature;
     }
 
     queue_ptr stream(int id, int stream) {
@@ -672,5 +681,4 @@ bool gpu_has_xmx(sycl::device &dev);
 void ggml_sycl_op_flatten(ggml_backend_sycl_context & ctx, const ggml_tensor *src0,
                                  const ggml_tensor *src1, ggml_tensor *dst,
                                  const ggml_sycl_op_flatten_t op);
-
 #endif // GGML_SYCL_COMMON_HPP

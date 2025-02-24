@@ -43,6 +43,16 @@ For CI and performance test summary, please refer to [llama.cpp CI for SYCL Back
 
 ## News
 
+- 2025.2
+  - Optimize MUL_MAT Q4_0 on Intel GPU for all dGPUs and built-in GPUs since MTL. Increase the performance of LLM (llama-2-7b.Q4_0.gguf) 21%-87% on Intel GPUs (MTL, ARL-H, Arc, Flex, PVC).
+    |GPU|Base tokens/s|Increased tokens/s|Percent|
+    |-|-|-|-|
+    |PVC 1550|39|73|+87%|
+    |Flex 170|39|50|+28%|
+    |Arc770|42|55|+30%|
+    |MTL|13|16|+23%|
+    |ARL-H|14|17|+21%|
+
 - 2024.11
   - Use syclcompat to improve the performance on some platforms. This requires to use oneAPI 2025.0 or newer.
 
@@ -101,8 +111,8 @@ SYCL backend supports Intel GPU Family:
 | Intel Data Center Max Series  | Support | Max 1550, 1100                        |
 | Intel Data Center Flex Series | Support | Flex 170                              |
 | Intel Arc Series              | Support | Arc 770, 730M, Arc A750               |
-| Intel built-in Arc GPU        | Support | built-in Arc GPU in Meteor Lake       |
-| Intel iGPU                    | Support | iGPU in 13700k, i5-1250P, i7-1260P, i7-1165G7 |
+| Intel built-in Arc GPU        | Support | built-in Arc GPU in Meteor Lake, Arrow Lake    |
+| Intel iGPU                    | Support | iGPU in 13700k,iGPU in 13400, i5-1250P, i7-1260P, i7-1165G7 |
 
 *Notes:*
 
@@ -697,6 +707,7 @@ use 1 SYCL GPUs: [0] with Max compute units:512
 | Name              | Value            | Function                                                                                                                  |
 |-------------------|------------------|---------------------------------------------------------------------------------------------------------------------------|
 | GGML_SYCL_DEBUG   | 0 (default) or 1 | Enable log function by macro: GGML_SYCL_DEBUG                                                                             |
+| GGML_SYCL_DISABLE_OPT | 0 (default) or 1 | Disable optimize features based on Intel GPU type, to compare the performance increase |
 | ZES_ENABLE_SYSMAN | 0 (default) or 1 | Support to get free memory of GPU by sycl::aspect::ext_intel_free_memory.<br>Recommended to use when --split-mode = layer |
 | GGML_SYCL_VISIBLE_DEVICES|id1,id2,...|It's like `CUDA_VISIBLE_DEVICES`, define the SYCL device ID list to visible. Like "0", "0,2", "2,1" |
 | ONEAPI_DEVICE_SELECTOR|Refer to [oneapi-device-selector](https://intel.github.io/llvm-docs/EnvironmentVariables.html#oneapi-device-selector)|be used to limit the choice of devices available when the SYCL-using application is run|
@@ -723,6 +734,7 @@ The parameters about device choose of llama.cpp works with SYCL backend rule to 
 |-|-|-|
 |Single Device|`--split-mode=none` and `--main-gpu=id`|The value of `main-gpu` must be in the chosen device lists printed out during llama.cpp startup. Like:<br>`detect 2 SYCL level-zero GPUs:[0,1]`.<br>`main-gpu` should be set to `0` or `1`.|
 |Multiple Device|`--split-mode=layer`|Default|
+
 
 
 ## Known Issues

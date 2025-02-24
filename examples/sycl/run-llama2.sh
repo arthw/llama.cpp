@@ -3,7 +3,7 @@
 #  MIT license
 #  Copyright (C) 2024 Intel Corporation
 #  SPDX-License-Identifier: MIT
-
+export ONEAPI_DEVICE_SELECTOR="level_zero:0"
 source /opt/intel/oneapi/setvars.sh
 
 #export GGML_SYCL_DEBUG=1
