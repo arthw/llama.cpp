@@ -42,6 +42,9 @@
 
 #include "ggml-sycl/gemm.hpp"
 
+static bool g_sycl_loaded = false;
+int g_ggml_sycl_debug = 0;
+
 void   ggml_sycl_free_data(struct ggml_tensor * tensor);
 void   ggml_sycl_copy_to_device(struct ggml_tensor * tensor);
 void   ggml_sycl_set_main_device(int main_device);
