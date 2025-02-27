@@ -30,7 +30,7 @@ void ggml_sycl_device_info::clear_infos() {
     infos[id].id = -1;
     infos[id].max_work_group_sizes = 0;
     infos[id].max_compute_units = 0;
-    infos[id].hw_family = -1;
+    infos[id].total_vram = 0;
   }
 
   device_count = 0;
@@ -218,7 +218,9 @@ void ggml_sycl_device_info::add_device_info(int id) {
     infos[id].device = device;
     infos[id].max_work_group_sizes = prop.get_max_work_group_size();
     infos[id].max_compute_units = prop.get_max_compute_units();
-    infos[id].hw_family = get_device_family(&device);
+    infos[id].hw_info = get_device_hw_info(&device);
+    infos[id].opt_feature = check_gpu_optimize_feature(infos[id].hw_info.arch);
+
 }
 
 void ggml_sycl_device_info::create_queues(int id) {
@@ -332,7 +334,7 @@ int ggml_sycl_device_info::get_device_id(int device_index) {
 }
 
 int ggml_sycl_device_info::hw_family(int id) {
-    return infos[id].hw_family;
+    return infos[id].hw_info.family;
 }
 
 static inline bool env_existed(const char *env_name) {

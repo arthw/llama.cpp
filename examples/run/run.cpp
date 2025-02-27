@@ -1,5 +1,6 @@
 #if defined(_WIN32)
 #    include <windows.h>
+#    include <io.h>
 #else
 #    include <sys/file.h>
 #    include <sys/ioctl.h>
@@ -10,19 +11,32 @@
 #    include <curl/curl.h>
 #endif
 
+#include <signal.h>
+
 #include <climits>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <list>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include "chat.h"
 #include "common.h"
 #include "json.hpp"
+#include "linenoise.cpp/linenoise.h"
 #include "llama-cpp.h"
+#include "log.h"
+
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__)) || defined(_WIN32)
+[[noreturn]] static void sigint_handler(int) {
+    printf("\n" LOG_COL_DEFAULT);
+    exit(0);  // not ideal, but it's the only way to guarantee exit in all cases
+}
+#endif
 
 GGML_ATTRIBUTE_FORMAT(1, 2)
 static std::string fmt(const char * fmt, ...) {
@@ -52,32 +66,64 @@ static int printe(const char * fmt, ...) {
     return ret;
 }
 
+static std::string strftime_fmt(const char * fmt, const std::tm & tm) {
+    std::ostringstream oss;
+    oss << std::put_time(&tm, fmt);
+
+    return oss.str();
+}
+
 class Opt {
   public:
     int init(int argc, const char ** argv) {
+        ctx_params           = llama_context_default_params();
+        model_params         = llama_model_default_params();
+        context_size_default = ctx_params.n_batch;
+        ngl_default          = model_params.n_gpu_layers;
+        common_params_sampling sampling;
+        temperature_default = sampling.temp;
+
+        if (argc < 2) {
+            printe("Error: No arguments provided.\n");
+            print_help();
+            return 1;
+        }
+
         // Parse arguments
         if (parse(argc, argv)) {
             printe("Error: Failed to parse arguments.\n");
-            help();
+            print_help();
             return 1;
         }
 
         // If help is requested, show help and exit
-        if (help_) {
-            help();
+        if (help) {
+            print_help();
             return 2;
         }
+
+        ctx_params.n_batch        = context_size >= 0 ? context_size : context_size_default;
+        ctx_params.n_ctx          = ctx_params.n_batch;
+        model_params.n_gpu_layers = ngl >= 0 ? ngl : ngl_default;
+        temperature               = temperature >= 0 ? temperature : temperature_default;
 
         return 0;  // Success
     }
 
+    llama_context_params ctx_params;
+    llama_model_params   model_params;
     std::string model_;
-    std::string user_;
-    int         context_size_ = -1, ngl_ = -1;
-    bool        verbose_ = false;
+    std::string chat_template_file;
+    std::string          user;
+    bool                 use_jinja   = false;
+    int                  context_size = -1, ngl = -1;
+    float                temperature = -1;
+    bool                 verbose     = false;
 
   private:
-    bool        help_ = false;
+    int   context_size_default = -1, ngl_default = -1;
+    float temperature_default = -1;
+    bool  help                = false;
 
     bool parse_flag(const char ** argv, int i, const char * short_opt, const char * long_opt) {
         return strcmp(argv[i], short_opt) == 0 || strcmp(argv[i], long_opt) == 0;
@@ -89,6 +135,27 @@ class Opt {
         }
 
         option_value = std::atoi(argv[++i]);
+
+        return 0;
+    }
+
+    int handle_option_with_value(int argc, const char ** argv, int & i, float & option_value) {
+        if (i + 1 >= argc) {
+            return 1;
+        }
+
+        option_value = std::atof(argv[++i]);
+
+        return 0;
+    }
+
+    int handle_option_with_value(int argc, const char ** argv, int & i, std::string & option_value) {
+        if (i + 1 >= argc) {
+            return 1;
+        }
+
+        option_value = argv[++i];
+
         return 0;
     }
 
@@ -96,18 +163,30 @@ class Opt {
         bool options_parsing   = true;
         for (int i = 1, positional_args_i = 0; i < argc; ++i) {
             if (options_parsing && (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--context-size") == 0)) {
-                if (handle_option_with_value(argc, argv, i, context_size_) == 1) {
+                if (handle_option_with_value(argc, argv, i, context_size) == 1) {
                     return 1;
                 }
-            } else if (options_parsing && (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--ngl") == 0)) {
-                if (handle_option_with_value(argc, argv, i, ngl_) == 1) {
+            } else if (options_parsing &&
+                       (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "-ngl") == 0 || strcmp(argv[i], "--ngl") == 0)) {
+                if (handle_option_with_value(argc, argv, i, ngl) == 1) {
+                    return 1;
+                }
+            } else if (options_parsing && strcmp(argv[i], "--temp") == 0) {
+                if (handle_option_with_value(argc, argv, i, temperature) == 1) {
                     return 1;
                 }
             } else if (options_parsing &&
                        (parse_flag(argv, i, "-v", "--verbose") || parse_flag(argv, i, "-v", "--log-verbose"))) {
-                verbose_ = true;
+                verbose = true;
+            } else if (options_parsing && strcmp(argv[i], "--jinja") == 0) {
+                use_jinja = true;
+            } else if (options_parsing && strcmp(argv[i], "--chat-template-file") == 0){
+                if (handle_option_with_value(argc, argv, i, chat_template_file) == 1) {
+                    return 1;
+                }
+                use_jinja = true;
             } else if (options_parsing && parse_flag(argv, i, "-h", "--help")) {
-                help_ = true;
+                help = true;
                 return 0;
             } else if (options_parsing && strcmp(argv[i], "--") == 0) {
                 options_parsing = false;
@@ -120,16 +199,20 @@ class Opt {
                 model_ = argv[i];
             } else if (positional_args_i == 1) {
                 ++positional_args_i;
-                user_ = argv[i];
+                user = argv[i];
             } else {
-                user_ += " " + std::string(argv[i]);
+                user += " " + std::string(argv[i]);
             }
+        }
+
+        if (model_.empty()){
+            return 1;
         }
 
         return 0;
     }
 
-    void help() const {
+    void print_help() const {
         printf(
             "Description:\n"
             "  Runs a llm\n"
@@ -140,8 +223,15 @@ class Opt {
             "Options:\n"
             "  -c, --context-size <value>\n"
             "      Context size (default: %d)\n"
-            "  -n, --ngl <value>\n"
+            "  --chat-template-file <path>\n"
+            "      Path to the file containing the chat template to use with the model.\n"
+            "      Only supports jinja templates and implicitly sets the --jinja flag.\n"
+            "  --jinja\n"
+            "      Use jinja templating for the chat template of the model\n"
+            "  -n, -ngl, --ngl <value>\n"
             "      Number of GPU layers (default: %d)\n"
+            "  --temp <value>\n"
+            "      Temperature (default: %.1f)\n"
             "  -v, --verbose, --log-verbose\n"
             "      Set verbosity level to infinity (i.e. log all messages, useful for debugging)\n"
             "  -h, --help\n"
@@ -170,7 +260,7 @@ class Opt {
             "  llama-run file://some-file3.gguf\n"
             "  llama-run --ngl 999 some-file4.gguf\n"
             "  llama-run --ngl 999 some-file5.gguf Hello World\n",
-            llama_context_default_params().n_batch, llama_model_default_params().n_gpu_layers);
+            context_size_default, ngl_default, temperature_default);
     }
 };
 
@@ -192,13 +282,12 @@ static int get_terminal_width() {
 #endif
 }
 
-#ifdef LLAMA_USE_CURL
 class File {
   public:
     FILE * file = nullptr;
 
     FILE * open(const std::string & filename, const char * mode) {
-        file = fopen(filename.c_str(), mode);
+        file = ggml_fopen(filename.c_str(), mode);
 
         return file;
     }
@@ -214,7 +303,7 @@ class File {
                 return 1;
             }
 
-            OVERLAPPED overlapped = { 0 };
+            OVERLAPPED overlapped = {};
             if (!LockFileEx(hFile, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, MAXDWORD, MAXDWORD,
                             &overlapped)) {
                 fd = -1;
@@ -234,11 +323,25 @@ class File {
         return 0;
     }
 
+    std::string to_string() {
+        fseek(file, 0, SEEK_END);
+        const size_t size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+        std::string out;
+        out.resize(size);
+        const size_t read_size = fread(&out[0], 1, size, file);
+        if (read_size != size) {
+            printe("Error reading file: %s", strerror(errno));
+        }
+
+        return out;
+    }
+
     ~File() {
         if (fd >= 0) {
 #    ifdef _WIN32
             if (hFile != INVALID_HANDLE_VALUE) {
-                OVERLAPPED overlapped = { 0 };
+                OVERLAPPED overlapped = {};
                 UnlockFileEx(hFile, 0, MAXDWORD, MAXDWORD, &overlapped);
             }
 #    else
@@ -254,14 +357,19 @@ class File {
   private:
     int fd = -1;
 #    ifdef _WIN32
-    HANDLE hFile;
+    HANDLE hFile = nullptr;
 #    endif
 };
 
+#ifdef LLAMA_USE_CURL
 class HttpClient {
   public:
     int init(const std::string & url, const std::vector<std::string> & headers, const std::string & output_file,
              const bool progress, std::string * response_str = nullptr) {
+        if (std::filesystem::exists(output_file)) {
+            return 0;
+        }
+
         std::string output_file_partial;
         curl = curl_easy_init();
         if (!curl) {
@@ -273,7 +381,7 @@ class HttpClient {
         if (!output_file.empty()) {
             output_file_partial = output_file + ".partial";
             if (!out.open(output_file_partial, "ab")) {
-                printe("Failed to open file\n");
+                printe("Failed to open file for writing\n");
 
                 return 1;
             }
@@ -289,7 +397,11 @@ class HttpClient {
         data.file_size = set_resume_point(output_file_partial);
         set_progress_options(progress, data);
         set_headers(headers);
-        perform(url);
+        CURLcode res = perform(url);
+        if (res != CURLE_OK){
+            printe("Fetching resource '%s' failed: %s\n", url.c_str(), curl_easy_strerror(res));
+            return 1;
+        }
         if (!output_file.empty()) {
             std::filesystem::rename(output_file_partial, output_file);
         }
@@ -354,16 +466,12 @@ class HttpClient {
         }
     }
 
-    void perform(const std::string & url) {
-        CURLcode res;
+    CURLcode perform(const std::string & url) {
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_DEFAULT_PROTOCOL, "https");
         curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
-        res = curl_easy_perform(curl);
-        if (res != CURLE_OK) {
-            printe("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-        }
+        return curl_easy_perform(curl);
     }
 
     static std::string human_readable_time(double seconds) {
@@ -425,7 +533,7 @@ class HttpClient {
         return (now_downloaded_plus_file_size * 100) / total_to_download;
     }
 
-    static std::string generate_progress_prefix(curl_off_t percentage) { return fmt("%3ld%% |", percentage); }
+    static std::string generate_progress_prefix(curl_off_t percentage) { return fmt("%3ld%% |", static_cast<long int>(percentage)); }
 
     static double calculate_speed(curl_off_t now_downloaded, const std::chrono::steady_clock::time_point & start_time) {
         const auto                          now             = std::chrono::steady_clock::now();
@@ -462,8 +570,7 @@ class HttpClient {
 
     static void print_progress(const std::string & progress_prefix, const std::string & progress_bar,
                                const std::string & progress_suffix) {
-        printe("\r%*s\r%s%s| %s", get_terminal_width(), " ", progress_prefix.c_str(), progress_bar.c_str(),
-               progress_suffix.c_str());
+        printe("\r" LOG_CLR_TO_EOL "%s%s| %s", progress_prefix.c_str(), progress_bar.c_str(), progress_suffix.c_str());
     }
     // Function to write data to a file
     static size_t write_data(void * ptr, size_t size, size_t nmemb, void * stream) {
@@ -485,8 +592,8 @@ class LlamaData {
     llama_model_ptr                 model;
     llama_sampler_ptr               sampler;
     llama_context_ptr               context;
-    std::vector<llama_chat_message> messages;
-    std::vector<std::string>        msg_strs;
+    std::vector<llama_chat_message> messages; // TODO: switch to common_chat_msg
+    std::list<std::string>          msg_strs;
     std::vector<char>               fmtted;
 
     int init(Opt & opt) {
@@ -495,19 +602,20 @@ class LlamaData {
             return 1;
         }
 
-        context = initialize_context(model, opt.context_size_);
+        context = initialize_context(model, opt);
         if (!context) {
             return 1;
         }
 
-        sampler = initialize_sampler();
+        sampler = initialize_sampler(opt);
+
         return 0;
     }
 
   private:
 #ifdef LLAMA_USE_CURL
-    int download(const std::string & url, const std::vector<std::string> & headers, const std::string & output_file,
-                 const bool progress, std::string * response_str = nullptr) {
+    int download(const std::string & url, const std::string & output_file, const bool progress,
+                 const std::vector<std::string> & headers = {}, std::string * response_str = nullptr) {
         HttpClient http;
         if (http.init(url, headers, output_file, progress, response_str)) {
             return 1;
@@ -516,48 +624,85 @@ class LlamaData {
         return 0;
     }
 #else
-    int download(const std::string &, const std::vector<std::string> &, const std::string &, const bool,
+    int download(const std::string &, const std::string &, const bool, const std::vector<std::string> & = {},
                  std::string * = nullptr) {
         printe("%s: llama.cpp built without libcurl, downloading from an url not supported.\n", __func__);
+
         return 1;
     }
 #endif
 
-    int huggingface_dl(const std::string & model, const std::vector<std::string> headers, const std::string & bn) {
-        // Find the second occurrence of '/' after protocol string
-        size_t pos = model.find('/');
-        pos        = model.find('/', pos + 1);
-        if (pos == std::string::npos) {
-            return 1;
-        }
-
-        const std::string hfr = model.substr(0, pos);
-        const std::string hff = model.substr(pos + 1);
-        const std::string url = "https://huggingface.co/" + hfr + "/resolve/main/" + hff;
-        return download(url, headers, bn, true);
-    }
-
-    int ollama_dl(std::string & model, const std::vector<std::string> headers, const std::string & bn) {
-        if (model.find('/') == std::string::npos) {
-            model = "library/" + model;
-        }
-
-        std::string model_tag = "latest";
-        size_t      colon_pos = model.find(':');
+    // Helper function to handle model tag extraction and URL construction
+    std::pair<std::string, std::string> extract_model_and_tag(std::string & model, const std::string & base_url) {
+        std::string  model_tag = "latest";
+        const size_t colon_pos = model.find(':');
         if (colon_pos != std::string::npos) {
             model_tag = model.substr(colon_pos + 1);
             model     = model.substr(0, colon_pos);
         }
 
-        std::string manifest_url = "https://registry.ollama.ai/v2/" + model + "/manifests/" + model_tag;
+        std::string url = base_url + model + "/manifests/" + model_tag;
+
+        return { model, url };
+    }
+
+    // Helper function to download and parse the manifest
+    int download_and_parse_manifest(const std::string & url, const std::vector<std::string> & headers,
+                                    nlohmann::json & manifest) {
         std::string manifest_str;
-        const int   ret = download(manifest_url, headers, "", false, &manifest_str);
+        int         ret = download(url, "", false, headers, &manifest_str);
         if (ret) {
             return ret;
         }
 
-        nlohmann::json manifest = nlohmann::json::parse(manifest_str);
-        std::string    layer;
+        manifest = nlohmann::json::parse(manifest_str);
+
+        return 0;
+    }
+
+    int huggingface_dl(std::string & model, const std::string & bn) {
+        // Find the second occurrence of '/' after protocol string
+        size_t pos = model.find('/');
+        pos        = model.find('/', pos + 1);
+        std::string              hfr, hff;
+        std::vector<std::string> headers = { "User-Agent: llama-cpp", "Accept: application/json" };
+        std::string              url;
+
+        if (pos == std::string::npos) {
+            auto [model_name, manifest_url] = extract_model_and_tag(model, "https://huggingface.co/v2/");
+            hfr                             = model_name;
+
+            nlohmann::json manifest;
+            int            ret = download_and_parse_manifest(manifest_url, headers, manifest);
+            if (ret) {
+                return ret;
+            }
+
+            hff = manifest["ggufFile"]["rfilename"];
+        } else {
+            hfr = model.substr(0, pos);
+            hff = model.substr(pos + 1);
+        }
+
+        url = "https://huggingface.co/" + hfr + "/resolve/main/" + hff;
+
+        return download(url, bn, true, headers);
+    }
+
+    int ollama_dl(std::string & model, const std::string & bn) {
+        const std::vector<std::string> headers = { "Accept: application/vnd.docker.distribution.manifest.v2+json" };
+        if (model.find('/') == std::string::npos) {
+            model = "library/" + model;
+        }
+
+        auto [model_name, manifest_url] = extract_model_and_tag(model, "https://registry.ollama.ai/v2/");
+        nlohmann::json manifest;
+        int            ret = download_and_parse_manifest(manifest_url, {}, manifest);
+        if (ret) {
+            return ret;
+        }
+
+        std::string layer;
         for (const auto & l : manifest["layers"]) {
             if (l["mediaType"] == "application/vnd.ollama.image.model") {
                 layer = l["digest"];
@@ -565,8 +710,67 @@ class LlamaData {
             }
         }
 
-        std::string blob_url = "https://registry.ollama.ai/v2/" + model + "/blobs/" + layer;
-        return download(blob_url, headers, bn, true);
+        std::string blob_url = "https://registry.ollama.ai/v2/" + model_name + "/blobs/" + layer;
+
+        return download(blob_url, bn, true, headers);
+    }
+
+    int github_dl(const std::string & model, const std::string & bn) {
+        std::string  repository = model;
+        std::string  branch     = "main";
+        const size_t at_pos     = model.find('@');
+        if (at_pos != std::string::npos) {
+            repository = model.substr(0, at_pos);
+            branch     = model.substr(at_pos + 1);
+        }
+
+        const std::vector<std::string> repo_parts = string_split(repository, "/");
+        if (repo_parts.size() < 3) {
+            printe("Invalid GitHub repository format\n");
+            return 1;
+        }
+
+        const std::string & org          = repo_parts[0];
+        const std::string & project      = repo_parts[1];
+        std::string         url          = "https://raw.githubusercontent.com/" + org + "/" + project + "/" + branch;
+        for (size_t i = 2; i < repo_parts.size(); ++i) {
+            url += "/" + repo_parts[i];
+        }
+
+        return download(url, bn, true);
+    }
+
+    int s3_dl(const std::string & model, const std::string & bn) {
+        const size_t slash_pos = model.find('/');
+        if (slash_pos == std::string::npos) {
+            return 1;
+        }
+
+        const std::string bucket     = model.substr(0, slash_pos);
+        const std::string key        = model.substr(slash_pos + 1);
+        const char * access_key = std::getenv("AWS_ACCESS_KEY_ID");
+        const char * secret_key = std::getenv("AWS_SECRET_ACCESS_KEY");
+        if (!access_key || !secret_key) {
+            printe("AWS credentials not found in environment\n");
+            return 1;
+        }
+
+        // Generate AWS Signature Version 4 headers
+        // (Implementation requires HMAC-SHA256 and date handling)
+        // Get current timestamp
+        const time_t                   now     = time(nullptr);
+        const tm                       tm      = *gmtime(&now);
+        const std::string              date     = strftime_fmt("%Y%m%d", tm);
+        const std::string              datetime = strftime_fmt("%Y%m%dT%H%M%SZ", tm);
+        const std::vector<std::string> headers  = {
+            "Authorization: AWS4-HMAC-SHA256 Credential=" + std::string(access_key) + "/" + date +
+                "/us-east-1/s3/aws4_request",
+            "x-amz-content-sha256: UNSIGNED-PAYLOAD", "x-amz-date: " + datetime
+        };
+
+        const std::string url = "https://" + bucket + ".s3.amazonaws.com/" + key;
+
+        return download(url, bn, true, headers);
     }
 
     std::string basename(const std::string & path) {
@@ -578,37 +782,44 @@ class LlamaData {
         return path.substr(pos + 1);
     }
 
-    int remove_proto(std::string & model_) {
-        const std::string::size_type pos = model_.find("://");
+    int rm_until_substring(std::string & model_, const std::string & substring) {
+        const std::string::size_type pos = model_.find(substring);
         if (pos == std::string::npos) {
             return 1;
         }
 
-        model_ = model_.substr(pos + 3);  // Skip past "://"
+        model_ = model_.substr(pos + substring.size());  // Skip past the substring
         return 0;
     }
 
     int resolve_model(std::string & model_) {
         int                            ret     = 0;
         if (string_starts_with(model_, "file://") || std::filesystem::exists(model_)) {
-            remove_proto(model_);
+            rm_until_substring(model_, "://");
 
             return ret;
         }
 
-        const std::string              bn      = basename(model_);
-        const std::vector<std::string> headers = { "--header",
-                                                   "Accept: application/vnd.docker.distribution.manifest.v2+json" };
-        if (string_starts_with(model_, "hf://") || string_starts_with(model_, "huggingface://")) {
-            remove_proto(model_);
-            ret = huggingface_dl(model_, headers, bn);
-        } else if (string_starts_with(model_, "ollama://")) {
-            remove_proto(model_);
-            ret = ollama_dl(model_, headers, bn);
-        } else if (string_starts_with(model_, "https://")) {
-            download(model_, headers, bn, true);
-        } else {
-            ret = ollama_dl(model_, headers, bn);
+        const std::string bn = basename(model_);
+        if (string_starts_with(model_, "hf://") || string_starts_with(model_, "huggingface://") ||
+            string_starts_with(model_, "hf.co/")) {
+            rm_until_substring(model_, "hf.co/");
+            rm_until_substring(model_, "://");
+            ret = huggingface_dl(model_, bn);
+        } else if ((string_starts_with(model_, "https://") || string_starts_with(model_, "http://")) &&
+                   !string_starts_with(model_, "https://ollama.com/library/")) {
+            ret = download(model_, bn, true);
+        } else if (string_starts_with(model_, "github:") || string_starts_with(model_, "github://")) {
+            rm_until_substring(model_, "github:");
+            rm_until_substring(model_, "://");
+            ret = github_dl(model_, bn);
+        } else if (string_starts_with(model_, "s3://")) {
+            rm_until_substring(model_, "://");
+            ret = s3_dl(model_, bn);
+        } else {  // ollama:// or nothing
+            rm_until_substring(model_, "ollama.com/library/");
+            rm_until_substring(model_, "://");
+            ret = ollama_dl(model_, bn);
         }
 
         model_ = bn;
@@ -619,27 +830,20 @@ class LlamaData {
     // Initializes the model and returns a unique pointer to it
     llama_model_ptr initialize_model(Opt & opt) {
         ggml_backend_load_all();
-        llama_model_params model_params = llama_model_default_params();
-        model_params.n_gpu_layers       = opt.ngl_ >= 0 ? opt.ngl_ : model_params.n_gpu_layers;
         resolve_model(opt.model_);
-        printe(
-            "\r%*s"
-            "\rLoading model",
-            get_terminal_width(), " ");
-        llama_model_ptr model(llama_load_model_from_file(opt.model_.c_str(), model_params));
+        printe("\r" LOG_CLR_TO_EOL "Loading model");
+        llama_model_ptr model(llama_model_load_from_file(opt.model_.c_str(), opt.model_params));
         if (!model) {
             printe("%s: error: unable to load model from file: %s\n", __func__, opt.model_.c_str());
         }
 
-        printe("\r%*s\r", static_cast<int>(sizeof("Loading model")), " ");
+        printe("\r" LOG_CLR_TO_EOL);
         return model;
     }
 
     // Initializes the context with the specified parameters
-    llama_context_ptr initialize_context(const llama_model_ptr & model, const int n_ctx) {
-        llama_context_params ctx_params = llama_context_default_params();
-        ctx_params.n_ctx = ctx_params.n_batch = n_ctx >= 0 ? n_ctx : ctx_params.n_batch;
-        llama_context_ptr context(llama_new_context_with_model(model.get(), ctx_params));
+    llama_context_ptr initialize_context(const llama_model_ptr & model, const Opt & opt) {
+        llama_context_ptr context(llama_init_from_model(model.get(), opt.ctx_params));
         if (!context) {
             printe("%s: error: failed to create the llama_context\n", __func__);
         }
@@ -648,10 +852,10 @@ class LlamaData {
     }
 
     // Initializes and configures the sampler
-    llama_sampler_ptr initialize_sampler() {
+    llama_sampler_ptr initialize_sampler(const Opt & opt) {
         llama_sampler_ptr sampler(llama_sampler_chain_init(llama_sampler_chain_default_params()));
         llama_sampler_chain_add(sampler.get(), llama_sampler_init_min_p(0.05f, 1));
-        llama_sampler_chain_add(sampler.get(), llama_sampler_init_temp(0.8f));
+        llama_sampler_chain_add(sampler.get(), llama_sampler_init_temp(opt.temperature));
         llama_sampler_chain_add(sampler.get(), llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
         return sampler;
@@ -665,26 +869,33 @@ static void add_message(const char * role, const std::string & text, LlamaData &
 }
 
 // Function to apply the chat template and resize `formatted` if needed
-static int apply_chat_template(LlamaData & llama_data, const bool append) {
-    int result = llama_chat_apply_template(
-        llama_data.model.get(), nullptr, llama_data.messages.data(), llama_data.messages.size(), append,
-        append ? llama_data.fmtted.data() : nullptr, append ? llama_data.fmtted.size() : 0);
-    if (append && result > static_cast<int>(llama_data.fmtted.size())) {
-        llama_data.fmtted.resize(result);
-        result = llama_chat_apply_template(llama_data.model.get(), nullptr, llama_data.messages.data(),
-                                           llama_data.messages.size(), append, llama_data.fmtted.data(),
-                                           llama_data.fmtted.size());
+static int apply_chat_template(const struct common_chat_templates * tmpls, LlamaData & llama_data, const bool append, bool use_jinja) {
+    common_chat_templates_inputs inputs;
+    for (const auto & msg : llama_data.messages) {
+        common_chat_msg cmsg;
+        cmsg.role    = msg.role;
+        cmsg.content = msg.content;
+        inputs.messages.push_back(cmsg);
     }
+    inputs.add_generation_prompt = append;
+    inputs.use_jinja = use_jinja;
 
-    return result;
+    auto chat_params = common_chat_templates_apply(tmpls, inputs);
+    // TODO: use other params for tool calls.
+    auto result = chat_params.prompt;
+    llama_data.fmtted.resize(result.size() + 1);
+    memcpy(llama_data.fmtted.data(), result.c_str(), result.size() + 1);
+    return result.size();
 }
 
 // Function to tokenize the prompt
-static int tokenize_prompt(const llama_model_ptr & model, const std::string & prompt,
-                           std::vector<llama_token> & prompt_tokens) {
-    const int n_prompt_tokens = -llama_tokenize(model.get(), prompt.c_str(), prompt.size(), NULL, 0, true, true);
+static int tokenize_prompt(const llama_vocab * vocab, const std::string & prompt,
+                           std::vector<llama_token> & prompt_tokens, const LlamaData & llama_data) {
+    const bool is_first = llama_get_kv_cache_used_cells(llama_data.context.get()) == 0;
+
+    const int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, is_first, true);
     prompt_tokens.resize(n_prompt_tokens);
-    if (llama_tokenize(model.get(), prompt.c_str(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), true,
+    if (llama_tokenize(vocab, prompt.c_str(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), is_first,
                        true) < 0) {
         printe("failed to tokenize the prompt\n");
         return -1;
@@ -698,7 +909,7 @@ static int check_context_size(const llama_context_ptr & ctx, const llama_batch &
     const int n_ctx      = llama_n_ctx(ctx.get());
     const int n_ctx_used = llama_get_kv_cache_used_cells(ctx.get());
     if (n_ctx_used + batch.n_tokens > n_ctx) {
-        printf("\033[0m\n");
+        printf(LOG_COL_DEFAULT "\n");
         printe("context size exceeded\n");
         return 1;
     }
@@ -707,9 +918,9 @@ static int check_context_size(const llama_context_ptr & ctx, const llama_batch &
 }
 
 // convert the token to a string
-static int convert_token_to_string(const llama_model_ptr & model, const llama_token token_id, std::string & piece) {
+static int convert_token_to_string(const llama_vocab * vocab, const llama_token token_id, std::string & piece) {
     char buf[256];
-    int  n = llama_token_to_piece(model.get(), token_id, buf, sizeof(buf), 0, true);
+    int  n = llama_token_to_piece(vocab, token_id, buf, sizeof(buf), 0, true);
     if (n < 0) {
         printe("failed to convert token to piece\n");
         return 1;
@@ -727,8 +938,10 @@ static void print_word_and_concatenate_to_response(const std::string & piece, st
 
 // helper function to evaluate a prompt and generate a response
 static int generate(LlamaData & llama_data, const std::string & prompt, std::string & response) {
+    const llama_vocab * vocab = llama_model_get_vocab(llama_data.model.get());
+
     std::vector<llama_token> tokens;
-    if (tokenize_prompt(llama_data.model, prompt, tokens) < 0) {
+    if (tokenize_prompt(vocab, prompt, tokens, llama_data) < 0) {
         return 1;
     }
 
@@ -744,12 +957,12 @@ static int generate(LlamaData & llama_data, const std::string & prompt, std::str
 
         // sample the next token, check is it an end of generation?
         new_token_id = llama_sampler_sample(llama_data.sampler.get(), llama_data.context.get(), -1);
-        if (llama_token_is_eog(llama_data.model.get(), new_token_id)) {
+        if (llama_vocab_is_eog(vocab, new_token_id)) {
             break;
         }
 
         std::string piece;
-        if (convert_token_to_string(llama_data.model, new_token_id, piece)) {
+        if (convert_token_to_string(vocab, new_token_id, piece)) {
             return 1;
         }
 
@@ -759,12 +972,43 @@ static int generate(LlamaData & llama_data, const std::string & prompt, std::str
         batch = llama_batch_get_one(&new_token_id, 1);
     }
 
+    printf(LOG_COL_DEFAULT);
     return 0;
 }
 
-static int read_user_input(std::string & user) {
-    std::getline(std::cin, user);
-    return user.empty();  // Should have data in happy path
+static int read_user_input(std::string & user_input) {
+    static const char * prompt_prefix_env = std::getenv("LLAMA_PROMPT_PREFIX");
+    static const char * prompt_prefix     = prompt_prefix_env ? prompt_prefix_env : "> ";
+#ifdef WIN32
+    printf("\r" LOG_CLR_TO_EOL LOG_COL_DEFAULT "%s", prompt_prefix);
+
+    std::getline(std::cin, user_input);
+    if (std::cin.eof()) {
+        printf("\n");
+        return 1;
+    }
+#else
+    std::unique_ptr<char, decltype(&std::free)> line(const_cast<char *>(linenoise(prompt_prefix)), free);
+    if (!line) {
+        return 1;
+    }
+
+    user_input = line.get();
+#endif
+
+    if (user_input == "/bye") {
+        return 1;
+    }
+
+    if (user_input.empty()) {
+        return 2;
+    }
+
+#ifndef WIN32
+    linenoiseHistoryAdd(line.get());
+#endif
+
+    return 0;  // Should have data in happy path
 }
 
 // Function to generate a response based on the prompt
@@ -772,7 +1016,7 @@ static int generate_response(LlamaData & llama_data, const std::string & prompt,
                              const bool stdout_a_terminal) {
     // Set response color
     if (stdout_a_terminal) {
-        printf("\033[33m");
+        printf(LOG_COL_YELLOW);
     }
 
     if (generate(llama_data, prompt, response)) {
@@ -781,13 +1025,13 @@ static int generate_response(LlamaData & llama_data, const std::string & prompt,
     }
 
     // End response with color reset and newline
-    printf("\n%s", stdout_a_terminal ? "\033[0m" : "");
+    printf("\n%s", stdout_a_terminal ? LOG_COL_DEFAULT : "");
     return 0;
 }
 
 // Helper function to apply the chat template and handle errors
-static int apply_chat_template_with_error_handling(LlamaData & llama_data, const bool append, int & output_length) {
-    const int new_len = apply_chat_template(llama_data, append);
+static int apply_chat_template_with_error_handling(const common_chat_templates * tmpls, LlamaData & llama_data, const bool append, int & output_length, bool use_jinja) {
+    const int new_len = apply_chat_template(tmpls, llama_data, append, use_jinja);
     if (new_len < 0) {
         printe("failed to apply the chat template\n");
         return -1;
@@ -798,16 +1042,12 @@ static int apply_chat_template_with_error_handling(LlamaData & llama_data, const
 }
 
 // Helper function to handle user input
-static int handle_user_input(std::string & user_input, const std::string & user_) {
-    if (!user_.empty()) {
-        user_input = user_;
+static int handle_user_input(std::string & user_input, const std::string & user) {
+    if (!user.empty()) {
+        user_input = user;
         return 0;  // No need for interactive input
     }
 
-    printf(
-        "\r%*s"
-        "\r\033[32m> \033[0m",
-        get_terminal_width(), " ");
     return read_user_input(user_input);  // Returns true if input ends the loop
 }
 
@@ -831,36 +1071,85 @@ static bool is_stdout_a_terminal() {
 #endif
 }
 
-// Function to tokenize the prompt
-static int chat_loop(LlamaData & llama_data, const std::string & user_) {
+// Function to handle user input
+static int get_user_input(std::string & user_input, const std::string & user) {
+    while (true) {
+        const int ret = handle_user_input(user_input, user);
+        if (ret == 1) {
+            return 1;
+        }
+
+        if (ret == 2) {
+            continue;
+        }
+
+        break;
+    }
+
+    return 0;
+}
+
+// Reads a chat template file to be used
+static std::string read_chat_template_file(const std::string & chat_template_file) {
+    File file;
+    if (!file.open(chat_template_file, "r")) {
+        printe("Error opening chat template file '%s': %s", chat_template_file.c_str(), strerror(errno));
+        return "";
+    }
+
+    return file.to_string();
+}
+
+static int process_user_message(const Opt & opt, const std::string & user_input, LlamaData & llama_data,
+                                const common_chat_templates_ptr & chat_templates, int & prev_len,
+                                const bool stdout_a_terminal) {
+    add_message("user", opt.user.empty() ? user_input : opt.user, llama_data);
+    int new_len;
+    if (apply_chat_template_with_error_handling(chat_templates.get(), llama_data, true, new_len, opt.use_jinja) < 0) {
+        return 1;
+    }
+
+    std::string prompt(llama_data.fmtted.begin() + prev_len, llama_data.fmtted.begin() + new_len);
+    std::string response;
+    if (generate_response(llama_data, prompt, response, stdout_a_terminal)) {
+        return 1;
+    }
+
+    if (!opt.user.empty()) {
+        return 2;
+    }
+
+    add_message("assistant", response, llama_data);
+    if (apply_chat_template_with_error_handling(chat_templates.get(), llama_data, false, prev_len, opt.use_jinja) < 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+// Main chat loop function
+static int chat_loop(LlamaData & llama_data, const Opt & opt) {
     int prev_len = 0;
     llama_data.fmtted.resize(llama_n_ctx(llama_data.context.get()));
+    std::string chat_template;
+    if (!opt.chat_template_file.empty()) {
+        chat_template = read_chat_template_file(opt.chat_template_file);
+    }
+
+    common_chat_templates_ptr chat_templates    = common_chat_templates_init(llama_data.model.get(), chat_template);
     static const bool stdout_a_terminal = is_stdout_a_terminal();
     while (true) {
         // Get user input
         std::string user_input;
-        while (handle_user_input(user_input, user_)) {
+        if (get_user_input(user_input, opt.user) == 1) {
+            return 0;
         }
 
-        add_message("user", user_.empty() ? user_input : user_, llama_data);
-        int new_len;
-        if (apply_chat_template_with_error_handling(llama_data, true, new_len) < 0) {
+        const int ret = process_user_message(opt, user_input, llama_data, chat_templates, prev_len, stdout_a_terminal);
+        if (ret == 1) {
             return 1;
-        }
-
-        std::string prompt(llama_data.fmtted.begin() + prev_len, llama_data.fmtted.begin() + new_len);
-        std::string response;
-        if (generate_response(llama_data, prompt, response, stdout_a_terminal)) {
-            return 1;
-        }
-
-        if (!user_.empty()) {
+        } else if (ret == 2) {
             break;
-        }
-
-        add_message("assistant", response, llama_data);
-        if (apply_chat_template_with_error_handling(llama_data, false, prev_len) < 0) {
-            return 1;
         }
     }
 
@@ -869,7 +1158,7 @@ static int chat_loop(LlamaData & llama_data, const std::string & user_) {
 
 static void log_callback(const enum ggml_log_level level, const char * text, void * p) {
     const Opt * opt = static_cast<Opt *>(p);
-    if (opt->verbose_ || level == GGML_LOG_LEVEL_ERROR) {
+    if (opt->verbose || level == GGML_LOG_LEVEL_ERROR) {
         printe("%s", text);
     }
 }
@@ -880,7 +1169,23 @@ static std::string read_pipe_data() {
     return result.str();
 }
 
+static void ctrl_c_handling() {
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+    struct sigaction sigint_action;
+    sigint_action.sa_handler = sigint_handler;
+    sigemptyset(&sigint_action.sa_mask);
+    sigint_action.sa_flags = 0;
+    sigaction(SIGINT, &sigint_action, NULL);
+#elif defined(_WIN32)
+    auto console_ctrl_handler = +[](DWORD ctrl_type) -> BOOL {
+        return (ctrl_type == CTRL_C_EVENT) ? (sigint_handler(SIGINT), true) : false;
+    };
+    SetConsoleCtrlHandler(reinterpret_cast<PHANDLER_ROUTINE>(console_ctrl_handler), true);
+#endif
+}
+
 int main(int argc, const char ** argv) {
+    ctrl_c_handling();
     Opt       opt;
     const int ret = opt.init(argc, argv);
     if (ret == 2) {
@@ -890,11 +1195,11 @@ int main(int argc, const char ** argv) {
     }
 
     if (!is_stdin_a_terminal()) {
-        if (!opt.user_.empty()) {
-            opt.user_ += "\n\n";
+        if (!opt.user.empty()) {
+            opt.user += "\n\n";
         }
 
-        opt.user_ += read_pipe_data();
+        opt.user += read_pipe_data();
     }
 
     llama_log_set(log_callback, &opt);
@@ -903,7 +1208,7 @@ int main(int argc, const char ** argv) {
         return 1;
     }
 
-    if (chat_loop(llama_data, opt.user_)) {
+    if (chat_loop(llama_data, opt)) {
         return 1;
     }
 

@@ -12,6 +12,7 @@
 #include "ggml-sycl.h"
 #include "presets.hpp"
 // #include "common.hpp"
+#include "sycl_hw.hpp"
 
 enum ggml_sycl_backend_device_filter {
   SYCL_ALL_DEVICES = 0,
@@ -25,6 +26,9 @@ enum ggml_sycl_backend_gpu_mode {
     SYCL_MUL_GPU_MODE
 };
 
+struct optimize_feature {
+    bool reorder=false;
+};
 
 struct sycl_device_info {
     int     cc;                 // compute capability
@@ -37,7 +41,8 @@ struct sycl_device_info {
     sycl::device device;
     int max_compute_units;
     int max_work_group_sizes;
-    int hw_family;
+    sycl_hw_info hw_info;
+    optimize_feature opt_feature;
     sycl::context ctx;
     sycl::queue * qptrs[GGML_SYCL_MAX_STREAMS] = { nullptr };
 };
@@ -95,5 +100,28 @@ struct ggml_sycl_device_info {
 };
 
 static inline bool env_existed(const char *env_name);
+
+inline optimize_feature check_gpu_optimize_feature(syclex::architecture &arch) {
+    optimize_feature opt;
+
+    opt.reorder =
+        (arch == syclex::architecture::intel_gpu_dg1 ||
+         arch == syclex::architecture::intel_gpu_acm_g10 ||
+         arch == syclex::architecture::intel_gpu_acm_g11 ||
+         arch == syclex::architecture::intel_gpu_acm_g12 ||
+         arch == syclex::architecture::intel_gpu_pvc ||
+         arch == syclex::architecture::intel_gpu_pvc_vg ||
+         arch == syclex::architecture::intel_gpu_mtl_u ||
+         arch == syclex::architecture::intel_gpu_mtl_s ||
+         arch == syclex::architecture::intel_gpu_mtl_h ||
+         arch == syclex::architecture::intel_gpu_arl_u ||
+         arch == syclex::architecture::intel_gpu_arl_s ||
+         arch == syclex::architecture::intel_gpu_arl_h ||
+         arch == syclex::architecture::intel_gpu_bmg_g21 ||
+         arch == syclex::architecture::intel_gpu_lnl_m
+        );
+
+    return opt;
+}
 
 #endif // SYCL_DEVICE_HPP
