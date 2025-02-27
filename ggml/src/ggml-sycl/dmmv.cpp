@@ -77,8 +77,10 @@ static void dequantize_mul_mat_vec(const void * __restrict__ vx, const dfloat * 
     }
 
     // sum up partial sums and write back result
+   const int mask_start = ncols > GGML_SYCL_DMMV_X ? warp_size >> 1 : warp_size >> 2;
+
 #pragma unroll
-    for (int mask = warp_size / 2; mask > 0; mask >>= 1) {
+    for (int mask = mask_start; mask > 0; mask >>= 1) {
         tmp +=
             dpct::permute_sub_group_by_xor(item_ct1.get_sub_group(), tmp, mask);
     }

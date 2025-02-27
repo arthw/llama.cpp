@@ -23,7 +23,7 @@ void* ggml_sycl_host_malloc(size_t size) try {
   if (getenv("GGML_SYCL_NO_PINNED") != nullptr) {
     return nullptr;
   }
-//   ggml_sycl_info().device_mgr->first_queue
+
   void* ptr = nullptr;
   // allow to use dpct::get_in_order_queue() for host malloc
   auto q = dpct::get_in_order_queue();
@@ -32,7 +32,6 @@ void* ggml_sycl_host_malloc(size_t size) try {
   dpct::err0 err = CHECK_TRY_ERROR(
       ptr = (void*)sycl::malloc_host(size, q));
 
-//  printf("zjy ggml_sycl_host_malloc ptr=%p queue=%p size=%lu \n", ptr,q, size);
   if (err != 0) {
     // clear the error
     GGML_LOG_ERROR("WARNING: failed to allocate %.2f MB of pinned memory: %s\n", size / 1024.0 / 1024.0,    "syclGetErrorString is not supported");
@@ -113,7 +112,6 @@ void print_device_opt_feature(ggml_sycl_device_info &info) {
     int device_count = info.device_count;
 
     for (int id = 0; id < device_count; ++id) {
-        printf("zjy id=%d\n", id);
         sycl::device device = dpct::dev_mgr::instance().get_device(id);
         std::string backend_type = get_device_backend_and_type(device);
         int type_id = DeviceNums[backend_type]++;
