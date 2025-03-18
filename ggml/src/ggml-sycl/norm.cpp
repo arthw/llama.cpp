@@ -240,7 +240,7 @@ static void norm_f32_sycl(const float* x, float* dst, const int ncols,
                 sycl::nd_range<3>(sycl::range<3>(1, 1, nrows) * block_dims,
                     block_dims),
                 [=](sycl::nd_item<3> item_ct1)
-                [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+                [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
                     norm_f32(x, dst, ncols, eps, item_ct1,
                         s_sum_acc_ct1.get_pointer(), WARP_SIZE);
                 });
@@ -262,7 +262,7 @@ static void norm_f32_sycl(const float* x, float* dst, const int ncols,
                 sycl::nd_range<3>(sycl::range<3>(1, 1, nrows) * block_dims,
                     block_dims),
                 [=](sycl::nd_item<3> item_ct1)
-                [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+                [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
                     norm_f32(x, dst, ncols, eps, item_ct1,
                         get_pointer(s_sum_acc_ct1), work_group_size);
                 });
@@ -283,7 +283,7 @@ static void group_norm_f32_sycl(const float* x, float* dst,
                 sycl::nd_range<3>(sycl::range<3>(1, 1, num_groups) * block_dims,
                     block_dims),
                 [=](sycl::nd_item<3> item_ct1)
-                [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+                [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
                     group_norm_f32(
                         x, dst, group_size, ne_elements, eps_ct4, item_ct1,
                         s_sum_acc_ct1.get_pointer(), WARP_SIZE);
@@ -309,7 +309,7 @@ static void group_norm_f32_sycl(const float* x, float* dst,
                 sycl::nd_range<3>(sycl::range<3>(1, 1, num_groups) * block_dims,
                     block_dims),
                 [=](sycl::nd_item<3> item_ct1)
-                [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+                [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
                     group_norm_f32(x, dst, group_size, ne_elements,
                         eps_ct4, item_ct1,
                         get_pointer(s_sum_acc_ct1), work_group_size);
@@ -332,7 +332,7 @@ static void rms_norm_f32_sycl(const float* x, float* dst, const int ncols,
                 sycl::nd_range<3>(sycl::range<3>(1, 1, nrows) * block_dims,
                     block_dims),
                 [=](sycl::nd_item<3> item_ct1)
-                [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+                [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
                     rms_norm_f32(x, dst, ncols, eps, item_ct1,
                         s_sum_acc_ct1.get_pointer(), WARP_SIZE);
                 });
@@ -353,7 +353,7 @@ static void rms_norm_f32_sycl(const float* x, float* dst, const int ncols,
                 sycl::nd_range<3>(sycl::range<3>(1, 1, nrows) * block_dims,
                     block_dims),
                 [=](sycl::nd_item<3> item_ct1)
-                [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+                [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
                     rms_norm_f32(x, dst, ncols, eps, item_ct1,
                         get_pointer(s_sum_acc_ct1), work_group_size);
                 });
@@ -380,7 +380,7 @@ static void l2_norm_f32_sycl(const float* x, float* dst, const int ncols,
             });
     }
     else {
-        const int work_group_size = ggml_sycl_info().max_work_group_sizes[device];
+        const int work_group_size = ggml_sycl_info().work_group_size(device);
         assert(work_group_size % (WARP_SIZE * WARP_SIZE) == 0);
         const sycl::range<3> block_dims(1, 1, work_group_size);
         /*

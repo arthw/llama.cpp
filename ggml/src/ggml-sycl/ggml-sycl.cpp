@@ -217,7 +217,7 @@ catch (sycl::exception const &exc) {
   std::exit(1);
 }
 
-void dev2dev_memcpy(sycl::queue &q_dst, sycl::queue &q_src, void *ptr_dst,
+static void dev2dev_memcpy(sycl::queue &q_dst, sycl::queue &q_src, void *ptr_dst,
                     const void *ptr_src, size_t size) {
     char *host_buf = (char *)malloc(size);
     q_src.memcpy(host_buf, (const char *)ptr_src, size).wait();
@@ -429,7 +429,7 @@ ggml_backend_buffer_type_t ggml_backend_sycl_buffer_type(int device_id) {
     return &ggml_backend_sycl_buffer_types[device_id];
 }
 
-ggml_backend_buffer_type_t ggml_backend_sycl_buffer_type(ggml_backend_sycl_context * ctx) {
+static ggml_backend_buffer_type_t ggml_backend_sycl_buffer_type(ggml_backend_sycl_context * ctx) {
     GGML_SYCL_DEBUG("[SYCL] call ggml_backend_sycl_buffer_type\n");
 
     check_allow_device_id(ctx->device);
@@ -1490,7 +1490,7 @@ static void quantize_row_q8_1_sycl(const float *x, void *vy, const int kx,
 
         stream->parallel_for(
             sycl::nd_range<3>(num_blocks * block_size, block_size),
-            [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+            [=](sycl::nd_item<3> item_ct1) [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
                 quantize_q8_1<QUANT_BLOCK_TILE>(x, vy, kx, kx_padded, item_ct1);
             });
     }
@@ -1511,7 +1511,7 @@ static void ggml_mul_mat_p021_f16_f32_sycl(const void *vx, const float *y,
 
         stream->parallel_for(
             sycl::nd_range<3>(block_nums * block_dims, block_dims),
-            [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+            [=](sycl::nd_item<3> item_ct1) [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
                 mul_mat_p021_f16_f32(vx, y, dst, ncols_x, nrows_x, nchannels_x,
                                      nchannels_y, item_ct1);
             });
@@ -1531,7 +1531,7 @@ static void ggml_mul_mat_vec_nc_f16_f32_sycl(
 
         stream->parallel_for(
             sycl::nd_range<3>(block_nums * block_dims, block_dims),
-            [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+            [=](sycl::nd_item<3> item_ct1) [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
                 mul_mat_vec_nc_f16_f32(vx, y, dst, ncols_x, nrows_x,
                                        row_stride_x, channel_stride_x,
                                        nchannels_y / nchannels_x, item_ct1);
@@ -1572,7 +1572,7 @@ static void sum_rows_f32_sycl(const float *x, float *dst, const int ncols,
     const sycl::range<3> block_nums(1, nrows, 1);
     stream->parallel_for(sycl::nd_range<3>(block_nums * block_dims, block_dims),
                          [=](sycl::nd_item<3> item_ct1)
-                             [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+                             [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
                                  k_sum_rows_f32(x, dst, ncols, item_ct1);
                              });
 }
@@ -2759,7 +2759,7 @@ inline bool ggml_sycl_supports_mmq(enum ggml_type type) {
     return false;
 }
 
-bool ggml_sycl_supports_dmmv(enum ggml_type type) {
+static bool ggml_sycl_supports_dmmv(enum ggml_type type) {
     switch (type) {
         case GGML_TYPE_Q4_0:
         case GGML_TYPE_Q4_1:
@@ -3508,7 +3508,7 @@ catch (sycl::exception const &exc) {
   std::exit(1);
 }
 
-void reorder_qw(char *data_device, const int ncols, const int nrows,
+static void reorder_qw(char *data_device, const int ncols, const int nrows,
                 size_t size, size_t offset, dpct::queue_ptr stream) {
     auto tmp_buf = sycl::malloc_shared<char>(size, *stream);
     SYCL_CHECK(
@@ -3522,7 +3522,7 @@ void reorder_qw(char *data_device, const int ncols, const int nrows,
 
     stream->parallel_for(
         size / sizeof(block_q4_0),
-            [=](auto i) [[intel::reqd_sub_group_size(WARP_SIZE)]] {
+            [=](auto i) [[sycl::reqd_sub_group_size(WARP_SIZE)]] {
             const block_q4_0* x = (const block_q4_0*)tmp_buf;
             const int ib = i;
 
@@ -3536,7 +3536,7 @@ void reorder_qw(char *data_device, const int ncols, const int nrows,
     sycl::free(tmp_buf, *stream);
 }
 
-void reorder_qw(ggml_tensor * src0, dpct::queue_ptr stream) {
+static void reorder_qw(ggml_tensor * src0, dpct::queue_ptr stream) {
     char*data_device = (char*)src0->data;
     size_t ncols = src0->ne[0];
     size_t nrows = src0->ne[1];
@@ -3545,7 +3545,7 @@ void reorder_qw(ggml_tensor * src0, dpct::queue_ptr stream) {
     reorder_qw(data_device, ncols, nrows, size, 0, stream);
 }
 
-void opt_for_reorder(ggml_tensor * dst, dpct::queue_ptr stream) {
+static void opt_for_reorder(ggml_tensor * dst, dpct::queue_ptr stream) {
     ggml_tensor *src0 = dst->src[0];
     ggml_tensor *src1 = dst->src[1];
 
@@ -3558,7 +3558,7 @@ void opt_for_reorder(ggml_tensor * dst, dpct::queue_ptr stream) {
     }
 }
 
-void optimize_graph_once(ggml_cgraph * cgraph, ggml_backend_sycl_context * ctx) {
+static void optimize_graph_once(ggml_cgraph * cgraph, ggml_backend_sycl_context * ctx) {
     dpct::queue_ptr stream = ctx->stream();
     if (ctx->optimized_graph) {
        return;
@@ -3748,7 +3748,7 @@ static bool ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, const g
                     return true;
                 }
                 return false;
-            } break;
+            }
         case GGML_OP_UNARY:
             switch (ggml_get_unary_op(op)) {
                 case GGML_UNARY_OP_NEG:
@@ -3766,7 +3766,6 @@ static bool ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, const g
                 default:
                     return false;
             }
-            break;
         case GGML_OP_MUL_MAT:
         case GGML_OP_MUL_MAT_ID:
             {
@@ -3802,7 +3801,7 @@ static bool ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, const g
                 }
 
                 return true;
-            } break;
+            }
         case GGML_OP_OUT_PROD:
             return op->type == GGML_TYPE_F32 && op->src[0]->type == GGML_TYPE_F32 && op->src[1]->type == GGML_TYPE_F32 && op->ne[2] == 1 && op->ne[3] == 1;
         case GGML_OP_GET_ROWS:
@@ -3819,7 +3818,7 @@ static bool ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, const g
                     default:
                         return false;
                 }
-            } break;
+            }
         case GGML_OP_CPY:
             {
                 ggml_type src0_type = op->src[0]->type;
@@ -3870,12 +3869,12 @@ static bool ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, const g
                     return true;
                 }
                 return false;
-            } break;
+            }
         case GGML_OP_CONCAT:
             {
                 ggml_type src0_type = op->src[0]->type;
                 return src0_type != GGML_TYPE_I32 && src0_type != GGML_TYPE_I16;
-            } break;
+            }
         case GGML_OP_DUP:
         case GGML_OP_ARGMAX:
         case GGML_OP_NONE:
