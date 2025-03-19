@@ -36,7 +36,7 @@
 #include "ggml-cuda/tsembd.cuh"
 #include "ggml-cuda/unary.cuh"
 #include "ggml-cuda/upscale.cuh"
-#include "ggml-cuda/wkv6.cuh"
+#include "ggml-cuda/wkv.cuh"
 #include "ggml-cuda/gla.cuh"
 #include "ggml.h"
 
@@ -540,12 +540,12 @@ static void * ggml_backend_cuda_buffer_get_base(ggml_backend_buffer_t buffer) {
     return ctx->dev_ptr;
 }
 
-static void ggml_backend_cuda_buffer_init_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor) {
+static enum ggml_status ggml_backend_cuda_buffer_init_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor) {
     ggml_backend_cuda_buffer_context * ctx = (ggml_backend_cuda_buffer_context *)buffer->context;
 
     if (tensor->view_src != NULL) {
         assert(tensor->view_src->buffer->buft == buffer->buft);
-        return;
+        return GGML_STATUS_SUCCESS;
     }
 
     if (ggml_is_quantized(tensor->type) && tensor->view_src == nullptr && ggml_backend_buffer_get_usage(buffer) != GGML_BACKEND_BUFFER_USAGE_COMPUTE) {
@@ -558,6 +558,7 @@ static void ggml_backend_cuda_buffer_init_tensor(ggml_backend_buffer_t buffer, g
             CUDA_CHECK(cudaMemset((char *)tensor->data + original_size, 0, padded_size - original_size));
         }
     }
+    return GGML_STATUS_SUCCESS;
 }
 
 static void ggml_backend_cuda_buffer_memset_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor, uint8_t value, size_t offset, size_t size) {
@@ -792,7 +793,7 @@ static void * ggml_backend_cuda_split_buffer_get_base(ggml_backend_buffer_t buff
     GGML_UNUSED(buffer);
 }
 
-static void ggml_backend_cuda_split_buffer_init_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor) {
+static enum ggml_status ggml_backend_cuda_split_buffer_init_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor) {
     GGML_ASSERT(tensor->view_src == nullptr); // views of split tensors are not supported
 
     ggml_backend_cuda_split_buffer_context * ctx = (ggml_backend_cuda_split_buffer_context *)buffer->context;
@@ -838,6 +839,7 @@ static void ggml_backend_cuda_split_buffer_init_tensor(ggml_backend_buffer_t buf
         }
     }
     tensor->extra = extra;
+    return GGML_STATUS_SUCCESS;
 }
 
 static void ggml_backend_cuda_split_buffer_set_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor, const void * data, size_t offset, size_t size) {
@@ -2145,6 +2147,12 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
             break;
         case GGML_OP_UNARY:
             switch (ggml_get_unary_op(dst)) {
+                case GGML_UNARY_OP_ABS:
+                    ggml_cuda_op_abs(ctx, dst);
+                    break;
+                case GGML_UNARY_OP_SGN:
+                    ggml_cuda_op_sgn(ctx, dst);
+                    break;
                 case GGML_UNARY_OP_NEG:
                     ggml_cuda_op_neg(ctx, dst);
                     break;
@@ -2187,6 +2195,9 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
             break;
         case GGML_OP_GROUP_NORM:
             ggml_cuda_op_group_norm(ctx, dst);
+            break;
+        case GGML_OP_L2_NORM:
+            ggml_cuda_op_l2_norm(ctx, dst);
             break;
         case GGML_OP_CONCAT:
             ggml_cuda_op_concat(ctx, dst);
@@ -2242,6 +2253,9 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
         case GGML_OP_CLAMP:
             ggml_cuda_op_clamp(ctx, dst);
             break;
+        case GGML_OP_LOG:
+            ggml_cuda_op_log(ctx, dst);
+            break;
         case GGML_OP_NONE:
         case GGML_OP_RESHAPE:
         case GGML_OP_VIEW:
@@ -2292,6 +2306,9 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
             break;
         case GGML_OP_GATED_LINEAR_ATTN:
             ggml_cuda_op_gated_linear_attn(ctx, dst);
+            break;
+        case GGML_OP_RWKV_WKV7:
+            ggml_cuda_op_rwkv_wkv7(ctx, dst);
             break;
         case GGML_OP_CROSS_ENTROPY_LOSS_BACK:
             ggml_cuda_cross_entropy_loss_back(ctx, dst);
@@ -2560,7 +2577,7 @@ static void maintain_cuda_graph(ggml_backend_cuda_context * cuda_ctx, std::vecto
         for (size_t i = 0; i < cuda_ctx->cuda_graph->num_nodes; i++) {
             if(count(ggml_cuda_cpy_fn_ptrs.begin(), ggml_cuda_cpy_fn_ptrs.end(), cuda_ctx->cuda_graph->params[i].func) > 0) {
                 char ** updated_kernel_arg_ptr = cuda_ctx->cuda_graph->updated_kernel_arg.at(k++);
-                cuda_ctx->cuda_graph->params[i].kernelParams[1] = updated_kernel_arg_ptr;
+                *(void**)cuda_ctx->cuda_graph->params[i].kernelParams[1] = *(void**)updated_kernel_arg_ptr;
                 CUDA_CHECK(cudaGraphKernelNodeSetParams(cuda_ctx->cuda_graph->nodes[i], &cuda_ctx->cuda_graph->params[i]));
             }
         }
@@ -2599,13 +2616,15 @@ static bool is_cuda_graph_update_required(ggml_backend_cuda_context * cuda_ctx, 
 
 static void update_cuda_graph_executable(ggml_backend_cuda_context * cuda_ctx) {
 
+#if CUDART_VERSION >= 12000
     cudaGraphExecUpdateResultInfo result_info;
-#ifdef __HIP_PLATFORM_AMD__
-    hipGraphNode_t errorNode;
-    hipError_t stat = hipGraphExecUpdate(cuda_ctx->cuda_graph->instance, cuda_ctx->cuda_graph->graph, &errorNode, &result_info);
-#else
     cudaError_t stat = cudaGraphExecUpdate(cuda_ctx->cuda_graph->instance, cuda_ctx->cuda_graph->graph, &result_info);
-#endif
+#else
+    cudaGraphNode_t errorNode;
+    cudaGraphExecUpdateResult result_info;
+    cudaError_t stat = cudaGraphExecUpdate(cuda_ctx->cuda_graph->instance, cuda_ctx->cuda_graph->graph, &errorNode, &result_info);
+#endif // CUDART_VERSION >= 12000
+
     if (stat == cudaErrorGraphExecUpdateFailure) {
 #ifndef NDEBUG
         GGML_LOG_DEBUG("%s: CUDA graph update failed\n", __func__);
@@ -2960,6 +2979,8 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
     switch (op->op) {
         case GGML_OP_UNARY:
             switch (ggml_get_unary_op(op)) {
+                case GGML_UNARY_OP_ABS:
+                case GGML_UNARY_OP_SGN:
                 case GGML_UNARY_OP_NEG:
                 case GGML_UNARY_OP_STEP:
                 case GGML_UNARY_OP_GELU:
@@ -3142,10 +3163,11 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                 return false;
             } break;
         case GGML_OP_SILU_BACK:
-            return ggml_is_contiguous(op->src[0]);
+            return ggml_is_contiguous(op->src[0]) && op->src[0]->type == GGML_TYPE_F32;
             break;
         case GGML_OP_NORM:
         case GGML_OP_RMS_NORM:
+        case GGML_OP_L2_NORM:
             return true;
         case GGML_OP_RMS_NORM_BACK:
             return ggml_is_contiguous(op->src[0]) && op->ne[0] % WARP_SIZE == 0;
@@ -3166,6 +3188,7 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
         case GGML_OP_SIN:
         case GGML_OP_COS:
         case GGML_OP_CLAMP:
+        case GGML_OP_LOG:
             return true;
         case GGML_OP_CONT:
             return op->src[0]->type != GGML_TYPE_BF16;
@@ -3199,6 +3222,7 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
         case GGML_OP_LEAKY_RELU:
         case GGML_OP_RWKV_WKV6:
         case GGML_OP_GATED_LINEAR_ATTN:
+        case GGML_OP_RWKV_WKV7:
             return true;
         case GGML_OP_FLASH_ATTN_EXT: {
 #ifndef FLASH_ATTN_AVAILABLE
