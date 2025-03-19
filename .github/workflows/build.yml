@@ -33,7 +33,6 @@ env:
   LLAMA_LOG_TIMESTAMPS: 1
 
 jobs:
-
   ubuntu-cpu-cmake:
     strategy:
       matrix:
@@ -334,7 +333,7 @@ jobs:
             -DGGML_SYCL_F16=ON
           cmake --build build --config Release -j $(nproc)
 
-   windows-latest-cmake-sycl:
+  windows-latest-cmake-sycl:
     runs-on: windows-latest
 
     defaults:
