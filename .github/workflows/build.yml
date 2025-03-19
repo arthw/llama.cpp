@@ -33,7 +33,6 @@ env:
   LLAMA_LOG_TIMESTAMPS: 1
 
 jobs:
-
   ubuntu-cpu-cmake:
     strategy:
       matrix:
