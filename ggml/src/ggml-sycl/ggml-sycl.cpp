@@ -3010,7 +3010,7 @@ static void ggml_sycl_mul_mat_id(ggml_backend_sycl_context & ctx,
             SYCL_CHECK(CHECK_TRY_ERROR(
                 stream->memset(dev_cur_src1_row.get(), 0, sizeof(int))));
 
-            const unsigned int max_work_group_size = ggml_sycl_info().max_work_group_sizes[ctx.device];
+            const unsigned int max_work_group_size = ggml_sycl_info().work_group_size(ctx.device);
             assert(work_group_size % (WARP_SIZE * WARP_SIZE) == 0);
 
             {
