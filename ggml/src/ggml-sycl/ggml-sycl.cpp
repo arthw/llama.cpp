@@ -104,6 +104,7 @@ static ggml_sycl_device_info ggml_sycl_init() {
 
         info.max_work_group_sizes[i] = prop.get_max_work_group_size();
         info.devices[i].max_wg_per_cu = info.max_work_group_sizes[i] / prop.get_max_compute_units();
+        info.devices[i].hw_info = get_device_hw_info(&device);
 
     }
 
@@ -3567,39 +3568,58 @@ static void ggml_sycl_mul_mat(ggml_backend_sycl_context & ctx, const ggml_tensor
     // requires disabling DMMV if both conditions are met
     if (!g_ggml_sycl_prioritize_dmmv && ((should_reorder_tensor(ctx, dst) &&
                                           ggml_sycl_supports_reorder_mmvq(src0->type)))) {
-        use_dequantize_mul_mat_vec = use_dequantize_mul_mat_vec && !use_mul_mat_vec_q;
+        if (ggml_sycl_info().devices[ctx.device].hw_info.arch > gpu_arch::intel_gpu_acm_g12) {
+            use_dequantize_mul_mat_vec = use_dequantize_mul_mat_vec && !use_mul_mat_vec_q;
+        }
     }
 
     if (!split && src0->type == GGML_TYPE_F16 && ggml_is_permuted(src0) && ggml_is_permuted(src1) && src1->ne[1] == 1) {
         // TODO: Refactor and cleanup of mul mat dispatching.
         if (src0->ne[3] == 1 && src1->ne[3] == 1) {
+            //printf("zjy 8 src0->type=%d\n",src0->type);
             // KQ single-batch
             // mmv p021 was specific for these dimensions
+            GGML_ASSERT(src0->type!=GGML_TYPE_Q4_0);
             ggml_sycl_mul_mat_vec_p021(ctx, src0, src1, dst);
         } else {
+            //printf("zjy 7 src0->type=%d\n",src0->type);
             // The kernel from the if path is faster for that specific case, but does not support all mul mats.
+            GGML_ASSERT(src0->type!=GGML_TYPE_Q4_0);
             ggml_sycl_mul_mat_batched_sycl(ctx, src0, src1, dst);
         }
     } else if (!split && src0->type == GGML_TYPE_F16 && !ggml_is_contiguous(src0) && !ggml_is_transposed(src1) && src1->ne[1] == 1 && src1->ne[3] == 1) {
         // KQV single-batch
+        //printf("zjy 6 src0->type=%d\n",src0->type);
+        GGML_ASSERT(src0->type!=GGML_TYPE_Q4_0);
         ggml_sycl_mul_mat_vec_nc(ctx, src0, src1, dst);
     } else if (!split && src0->type == GGML_TYPE_F16 && !ggml_is_transposed(src0) && !ggml_is_transposed(src1) && src1->ne[2] * src1->ne[3] > 1) {
         // KQ + KQV multi-batch
+        //printf("zjy 5 src0->type=%d\n",src0->type);
+        GGML_ASSERT(src0->type!=GGML_TYPE_Q4_0);
         ggml_sycl_mul_mat_batched_sycl(ctx, src0, src1, dst);
     } else if (use_dequantize_mul_mat_vec) {
+        //printf("zjy 4 src0->type=%d\n",src0->type);
         opt_for_reorder(&ctx, src0, src1, dst, mul_mat_algo::DMMV);
+        // GGML_ASSERT(src0->type!=GGML_TYPE_Q4_0);
         ggml_sycl_op_mul_mat<no_quantize_q8_1>(ctx, src0, src1, dst, ggml_sycl_op_dequantize_mul_mat_vec);
     } else if (use_mul_mat_vec_q) {
         opt_for_reorder(&ctx, src0, src1, dst, mul_mat_algo::MMVQ);
+        //printf("zjy 1 src0->type=%d\n",src0->type);
         ggml_tensor_extra_gpu * extra = static_cast<ggml_tensor_extra_gpu *>(src0->extra);
         if (extra && extra->optimized_feature.reorder) {
+            // GGML_ASSERT(src0->type!=GGML_TYPE_Q4_0);
             ggml_sycl_op_mul_mat<quantize_and_reorder_q8_1_soa>(ctx, src0, src1, dst, ggml_sycl_op_mul_mat_vec_q);
         } else {
+            // GGML_ASSERT(src0->type!=GGML_TYPE_Q4_0);
             ggml_sycl_op_mul_mat<quantize_q8_1>(ctx, src0, src1, dst, ggml_sycl_op_mul_mat_vec_q);
         }
     } else if (use_mul_mat_q) {
+        //printf("zjy 2 src0->type=%d\n",src0->type);
+        GGML_ASSERT(src0->type!=GGML_TYPE_Q4_0);
         ggml_sycl_op_mul_mat<quantize_q8_1>(ctx, src0, src1, dst, ggml_sycl_op_mul_mat_q);
     } else {
+        //printf("zjy 3 src0->type=%d\n",src0->type);
+        // GGML_ASSERT(src0->type!=GGML_TYPE_Q4_0);
         ggml_sycl_op_mul_mat<no_quantize_q8_1>(ctx, src0, src1, dst, ggml_sycl_op_mul_mat_sycl);
     }
 }
