@@ -3548,6 +3548,7 @@ inline bool ggml_sycl_supports_reorder_mul_mat_sycl(enum ggml_type type) {
     switch (type) {
         case GGML_TYPE_Q4_0:
         case GGML_TYPE_Q8_0:
+        case GGML_TYPE_MXFP4:
             return true;
         case GGML_TYPE_Q4_K:
         case GGML_TYPE_Q5_K:
@@ -3562,6 +3563,7 @@ inline bool ggml_sycl_supports_reorder_dmmv(enum ggml_type type) {
     switch (type) {
         case GGML_TYPE_Q4_0:
         case GGML_TYPE_Q8_0:
+        case GGML_TYPE_MXFP4:
             return true;
         default:
             return false;
@@ -3572,6 +3574,7 @@ inline bool ggml_sycl_supports_reorder_mmvq(enum ggml_type type) {
     switch (type) {
         case GGML_TYPE_Q4_0:
         case GGML_TYPE_Q8_0:
+        case GGML_TYPE_MXFP4:
         case GGML_TYPE_Q4_K:
         case GGML_TYPE_Q5_K:
         case GGML_TYPE_Q6_K:
@@ -3588,6 +3591,7 @@ static bool ggml_sycl_supports_dmmv(enum ggml_type type) {
         case GGML_TYPE_Q5_0:
         case GGML_TYPE_Q5_1:
         case GGML_TYPE_Q8_0:
+        case GGML_TYPE_MXFP4:
         case GGML_TYPE_Q2_K:
         case GGML_TYPE_Q3_K:
         case GGML_TYPE_Q4_K:
@@ -3742,6 +3746,44 @@ static bool reorder_qw_q8_0(uint8_t * data_device, const int ncols, const int nr
             }
             *(d_ptr + ib) = x[ib].d;
         });
+    if (!g_ggml_sycl_use_async_mem_op) {
+        reorder_event.wait_and_throw();
+    }
+    return true;
+}
+
+static bool reorder_qw_mxfp4(uint8_t * data_device, size_t size, size_t offset, dpct::queue_ptr stream) {
+    GGML_ASSERT(size % sizeof(block_mxfp4) == 0);
+    GGML_ASSERT(offset % sizeof(block_mxfp4) == 0);
+
+    const int nblocks = size / sizeof(block_mxfp4);
+
+    sycl_reorder_temp_buffer tmp(stream, size);
+    if (!tmp) {
+        GGML_LOG_WARN("%s: failed to allocate %zu bytes for reorder temp buffer, skipping reorder\n", __func__, size);
+        return false;
+    }
+    uint8_t * tmp_buf = static_cast<uint8_t *>(tmp.ptr);
+
+    sycl::event copy_event;
+    SYCL_CHECK(CHECK_TRY_ERROR(copy_event = stream->memcpy(tmp_buf, data_device, size)));
+    if (!g_ggml_sycl_use_async_mem_op) {
+        copy_event.wait();
+    }
+
+    auto * qs_ptr = data_device;
+    auto * e_ptr  = qs_ptr + (QK_MXFP4 / 2) * nblocks;
+
+    auto reorder_event = stream->parallel_for(nblocks, [=](auto i) {
+        const block_mxfp4 * x  = (const block_mxfp4 *) tmp_buf;
+        const int           ib = i;
+
+        for (int j = 0; j < QK_MXFP4 / 2; ++j) {
+            qs_ptr[ib * (QK_MXFP4 / 2) + j] = x[ib].qs[j];
+        }
+
+        e_ptr[ib] = x[ib].e;
+    });
     if (!g_ggml_sycl_use_async_mem_op) {
         reorder_event.wait_and_throw();
     }
@@ -3903,6 +3945,8 @@ static bool reorder_qw(const ggml_tensor * src0, dpct::queue_ptr stream) {
             return reorder_qw_q4_0(data_device, ncols, nrows, size, 0, stream);
         case GGML_TYPE_Q8_0:
             return reorder_qw_q8_0(data_device, ncols, nrows, size, 0, stream);
+        case GGML_TYPE_MXFP4:
+            return reorder_qw_mxfp4(data_device, size, 0, stream);
         case GGML_TYPE_Q4_K:
             return reorder_qw_q4_k(data_device, size, 0, stream);
         case GGML_TYPE_Q5_K:
@@ -5220,10 +5264,12 @@ static bool ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, const g
 
                 // disable Q1_0 until implementation
                 if (a->type == GGML_TYPE_Q1_0 || b->type == GGML_TYPE_Q1_0) {
+                    // printf("zjy debug: ggml_backend_sycl_device_supports_op: disabling Q1_0 for matmul\n");
                     return false;
                 }
 
                 if (a->ne[3] != b->ne[3]) {
+                    // printf("zjy debug: ggml_backend_sycl_device_supports_op: unsupported matmul with ne[3] mismatch a.ne[3]=%d b.ne[3]=%d\n", (int)a->ne[3], (int)b->ne[3]);
                     return false;
                 }
 
@@ -5234,14 +5280,17 @@ static bool ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, const g
                 // TODO: The configuration below needs more work to be supported with oneDNN
                 if (ggml_is_permuted(a) && !ggml_is_contiguous(a) &&
                     a->ne[2] > 1 && a->ne[3] > 1 && src0_type == GGML_TYPE_F16) {
+                        // printf("zjy debug: ggml_backend_sycl_device_supports_op: unsupported matmul with permuted and non-contiguous src0 with ne[2]>1 and ne[3]>1 and type F16\n");
                   return false;
                 }
 
                 // TODO: This specific configuration can fail with oneDNN and needs more debugging
                 if (!ggml_is_permuted(a) && ggml_is_permuted(b) && b->ne[2] > 1 && b->ne[3] > 1 &&
                     a->ne[0] > 128 && a->ne[2] == 1 && src0_type == GGML_TYPE_F16) {
+                        // printf("zjy debug: ggml_backend_sycl_device_supports_op: unsupported matmul with non-permuted src0 and permuted src1 with ne[2]>1 and ne[3]>1 and src0.ne[0]>128 and src0.ne[2]==1 and type F16\n");
                     return false;
                 }
+                // printf("zjy debug: ggml_backend_sycl_device_supports_op: supported matmul a.ne[2]=%d a.ne[3]=%d b.ne[2]=%d b.ne[3]=%d src0_type=%d\n", (int)a->ne[2], (int)a->ne[3], (int)b->ne[2], (int)b->ne[3], src0_type);
                 return true;
             }
         case GGML_OP_OUT_PROD:

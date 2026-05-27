@@ -940,6 +940,31 @@ static void dequantize_block_mxfp4(const void * __restrict__ vx, dst_t * __restr
     }
 }
 
+template<typename dst_t>
+static void dequantize_block_mxfp4_reorder(const void * __restrict__ vx, dst_t * __restrict__ yy,
+                                           const sycl::nd_item<3> &item_ct1, int64_t nblocks) {
+    const int64_t i = item_ct1.get_group(2);
+    if (i >= nblocks) {
+        return;
+    }
+
+    const int64_t tid = item_ct1.get_local_id(2);
+    if (tid >= QK_MXFP4 / 2) {
+        return;
+    }
+
+    const uint8_t * base = static_cast<const uint8_t *>(vx);
+    const uint8_t * qs   = base + i * (QK_MXFP4 / 2);
+    const uint8_t * e    = base + nblocks * (QK_MXFP4 / 2);
+
+    dst_t * y = yy + i * QK_MXFP4;
+    const float d = ggml_sycl_e8m0_to_fp32(e[i]);
+    const uint8_t q = qs[tid];
+
+    y[tid +  0] = d * kvalues_mxfp4[q & 0x0f] * 0.5f;
+    y[tid + 16] = d * kvalues_mxfp4[q >> 4]   * 0.5f;
+}
+
 
 template <typename dst_t>
 static void dequantize_block_nvfp4(

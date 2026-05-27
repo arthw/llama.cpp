@@ -394,6 +394,35 @@ template <> struct reorder_vec_dot_q_sycl<GGML_TYPE_Q8_0> {
     }
 };
 
+template <> struct reorder_vec_dot_q_sycl<GGML_TYPE_MXFP4> {
+    static constexpr ggml_type gtype = GGML_TYPE_MXFP4;
+
+    using mxfp4_block  = ggml_sycl_reordered::block_q_t<GGML_TYPE_MXFP4>;
+    using mxfp4_traits = typename mxfp4_block::traits;
+
+    __dpct_inline__ float operator()(const void * __restrict__ vbq, const std::pair<int, int> ibx_offset,
+                                     const std::pair<int, int> d_offset, const int8_t * q8_1_quant_ptr,
+                                     const sycl::half2 * q8_1_ds, const int & iqs) {
+        const uint8_t * base = static_cast<const uint8_t *>(vbq);
+        const uint8_t * qs   = base + ibx_offset.first;
+        const uint8_t   e    = *(base + d_offset.first);
+
+        const int * q8 = (const int *)q8_1_quant_ptr + iqs;
+
+        int sumi = 0;
+#pragma unroll
+        for (int l = 0; l < mxfp4_traits::vdr_mmvq; ++l) {
+            const int aux_q4 = get_int_b1(qs, iqs + l);
+            const sycl::int2 v = get_int_from_table_16(aux_q4, kvalues_mxfp4);
+            sumi = ggml_sycl_dp4a(v.x(), q8[l + 0], sumi);
+            sumi = ggml_sycl_dp4a(v.y(), q8[l + 4], sumi);
+        }
+
+        const float d = ggml_sycl_e8m0_to_fp32(e) * 0.5f * (*q8_1_ds)[0];
+        return d * sumi;
+    }
+};
+
 static inline float vec_dot_q4_K_q8_1_common(const int * __restrict__ q4, const uint16_t * __restrict__ scales,
                                              const ggml_half2 & dm, const block_q8_1 * __restrict__ bq8_1,
                                              const int &        iqs) {
