@@ -35,8 +35,6 @@ env:
 
 jobs:
 
-TODO: this build is disabled to save Github Actions resources (https://github.com/ggml-org/llama.cpp/pull/23705)
-      in order to enable it again, we have to provision dedicated runners  to run it
  ubuntu-24-sycl:
    strategy:
      matrix:
