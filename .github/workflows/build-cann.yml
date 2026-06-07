@@ -1,40 +1,39 @@
-name: CI (cann)
+# name: CI (cann)
 
-on:
-  workflow_dispatch: # allows manual triggering
-  push:
-    branches:
-      - master
-    paths: [
-      '.github/workflows/build-cann.yml',
-      '**/CMakeLists.txt',
-      '**/.cmake',
-      '**/*.h',
-      '**/*.hpp',
-      '**/*.c',
-      '**/*.cpp'
-    ]
+# on:
+#   workflow_dispatch: # allows manual triggering
+#   push:
+#     branches:
+#       - master
+#     paths: [
+#       '.github/workflows/build-cann.yml',
+#       '**/CMakeLists.txt',
+#       '**/.cmake',
+#       '**/*.h',
+#       '**/*.hpp',
+#       '**/*.c',
+#       '**/*.cpp'
+#     ]
 
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths: [
-      '.github/workflows/build-cann.yml',
-      'ggml/src/ggml-cann/**'
-    ]
+#   pull_request:
+#     types: [opened, synchronize, reopened]
+#     paths: [
+#       '.github/workflows/build-cann.yml',
+#       'ggml/src/ggml-cann/**'
+#     ]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref && github.ref || github.run_id }}
-  cancel-in-progress: true
+# concurrency:
+#   group: ${{ github.workflow }}-${{ github.head_ref && github.ref || github.run_id }}
+#   cancel-in-progress: true
 
-env:
-  GGML_NLOOP: 3
-  GGML_N_THREADS: 1
-  LLAMA_ARG_LOG_COLORS: 1
-  LLAMA_ARG_LOG_PREFIX: 1
-  LLAMA_ARG_LOG_TIMESTAMPS: 1
+# env:
+#   GGML_NLOOP: 3
+#   GGML_N_THREADS: 1
+#   LLAMA_ARG_LOG_COLORS: 1
+#   LLAMA_ARG_LOG_PREFIX: 1
+#   LLAMA_ARG_LOG_TIMESTAMPS: 1
 
 # jobs:
-
 # TODO: this build is disabled to save Github Actions resources (https://github.com/ggml-org/llama.cpp/pull/23705)
 #       in order to enable it again, we have to provision dedicated runners  to run it
 #  openEuler-latest-cann:
