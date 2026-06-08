@@ -20,74 +20,1850 @@
 #include "fattn.hpp"
 
 
-#define FATTN_VEC_CASE(D, type_K, type_V)                                                                        \
-    {                                                                                                            \
-        const bool type_K_okay = K->type == (type_K) || (K->type == GGML_TYPE_F32 && (type_K) == GGML_TYPE_F16); \
-        const bool type_V_okay = V->type == (type_V) || (V->type == GGML_TYPE_F32 && (type_V) == GGML_TYPE_F16); \
-        if (Q->ne[0] == (D) && type_K_okay && type_V_okay) {                                                     \
-            ggml_sycl_flash_attn_ext_vec_case<D, type_K, type_V>(ctx, dst);                                      \
-            return;                                                                                              \
-        }                                                                                                        \
-    }                                                                    \
+static void ggml_sycl_flash_attn_ext_vec_case_impl(
+    ggml_backend_sycl_context & ctx, ggml_tensor * dst,
+    int D, int cols_per_block, ggml_type type_K, ggml_type type_V, bool use_logit_softcap) {
 
-#define FATTN_VEC_CASES_ALL_D(type_K, type_V) \
-    FATTN_VEC_CASE( 64, type_K, type_V)       \
-    FATTN_VEC_CASE(128, type_K, type_V)       \
-    FATTN_VEC_CASE(256, type_K, type_V)       \
-    FATTN_VEC_CASE(512, type_K, type_V)       \
+    constexpr int    warp_size     = WARP_16_SIZE;
+    const int        cc            = ggml_sycl_info().devices[ggml_sycl_get_device()].cc;
+    const int        nthreads      = ggml_sycl_fattn_vec_get_nthreads_host(cc);
+    const int        nwarps        = nthreads / warp_size;
+    const bool       need_f16_K    = type_K == GGML_TYPE_F16;
+    const bool       need_f16_V    = type_V == GGML_TYPE_F16;
+    constexpr size_t nbytes_shared = 0;
+
+    switch (D) {
+        case 64:
+            switch (cols_per_block) {
+                case 1: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#else
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 1, 1, flash_attn_ext_vec<64, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#endif
+                } break;
+                case 2: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#else
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<64, 2, 1, flash_attn_ext_vec<64, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 64, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#endif
+                } break;
+                default: break;
+            }
+            break;
+        case 128:
+            switch (cols_per_block) {
+                case 1: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#else
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 1, 1, flash_attn_ext_vec<128, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#endif
+                } break;
+                case 2: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#else
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<128, 2, 1, flash_attn_ext_vec<128, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 128, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#endif
+                } break;
+                default: break;
+            }
+            break;
+        case 256:
+            switch (cols_per_block) {
+                case 1: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#else
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 1, 1, flash_attn_ext_vec<256, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#endif
+                } break;
+                case 2: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#else
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<256, 2, 1, flash_attn_ext_vec<256, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 256, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#endif
+                } break;
+                default: break;
+            }
+            break;
+        case 512:
+            switch (cols_per_block) {
+                case 1: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#else
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 1, 1, flash_attn_ext_vec<512, 1, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#endif
+                } break;
+                case 2: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#else
+                    if (type_K == GGML_TYPE_F16 && type_V == GGML_TYPE_F16) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_F16, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_F16, GGML_TYPE_F16, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+                    if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) {
+                        if (use_logit_softcap) { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, true,  warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false);  }
+                        else                  { launch_fattn<512, 2, 1, flash_attn_ext_vec<512, 2, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, false, warp_size>, warp_size>(ctx, dst, nwarps, nbytes_shared, 512, need_f16_K, need_f16_V, false); }
+                        return;
+                    }
+#endif
+                } break;
+                default: break;
+            }
+            break;
+        default:
+            break;
+    }
+    GGML_ABORT("Unsupported combination in ggml_sycl_flash_attn_ext_vec_case_impl");
+}
+
+void ggml_sycl_flash_attn_ext_vec_case(
+    ggml_backend_sycl_context & ctx, ggml_tensor * dst,
+    int D, ggml_type type_K, ggml_type type_V) {
+
+    const ggml_tensor * KQV = dst;
+    const ggml_tensor * Q   = dst->src[0];
+
+    float logit_softcap;
+    memcpy(&logit_softcap, (const float *) KQV->op_params + 2, sizeof(float));
+
+    const int  cols_per_block    = (Q->ne[1] == 1) ? 1 : 2;
+    const bool use_logit_softcap = (logit_softcap != 0.0f);
+
+    ggml_sycl_flash_attn_ext_vec_case_impl(ctx, dst, D, cols_per_block, type_K, type_V, use_logit_softcap);
+}
 
 static void ggml_sycl_flash_attn_ext_vec(ggml_backend_sycl_context & ctx, ggml_tensor * dst) {
     ggml_tensor * Q = dst->src[0];
     ggml_tensor * K = dst->src[1];
     ggml_tensor * V = dst->src[2];
 
+    // F32 tensors are handled as F16 for flash attention
+    const ggml_type type_K = (K->type == GGML_TYPE_F32) ? GGML_TYPE_F16 : K->type;
+    const ggml_type type_V = (V->type == GGML_TYPE_F32) ? GGML_TYPE_F16 : V->type;
+
+    switch (Q->ne[0]) {
+        case 64: {
 #ifdef GGML_SYCL_FA_ALL_QUANTS
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_F16,  GGML_TYPE_F16)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_0, GGML_TYPE_F16)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_1, GGML_TYPE_F16)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_0, GGML_TYPE_F16)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_1, GGML_TYPE_F16)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q8_0, GGML_TYPE_F16)
-
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_F16,  GGML_TYPE_Q4_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_0, GGML_TYPE_Q4_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_1, GGML_TYPE_Q4_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_0, GGML_TYPE_Q4_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_1, GGML_TYPE_Q4_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q8_0, GGML_TYPE_Q4_0)
-
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_F16,  GGML_TYPE_Q4_1)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_0, GGML_TYPE_Q4_1)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_1, GGML_TYPE_Q4_1)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_0, GGML_TYPE_Q4_1)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_1, GGML_TYPE_Q4_1)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q8_0, GGML_TYPE_Q4_1)
-
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_F16,  GGML_TYPE_Q5_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_0, GGML_TYPE_Q5_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_1, GGML_TYPE_Q5_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_0, GGML_TYPE_Q5_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_1, GGML_TYPE_Q5_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q8_0, GGML_TYPE_Q5_0)
-
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_F16,  GGML_TYPE_Q5_1)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_0, GGML_TYPE_Q5_1)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_1, GGML_TYPE_Q5_1)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_0, GGML_TYPE_Q5_1)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_1, GGML_TYPE_Q5_1)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q8_0, GGML_TYPE_Q5_1)
-
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_F16,  GGML_TYPE_Q8_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_0, GGML_TYPE_Q8_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_1, GGML_TYPE_Q8_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_0, GGML_TYPE_Q8_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q5_1, GGML_TYPE_Q8_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q8_0, GGML_TYPE_Q8_0)
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_F16, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_1, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_1, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q8_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_F16, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_F16, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_F16, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_F16, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_F16, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0); return; }
 #else
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_F16,  GGML_TYPE_F16)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q4_0, GGML_TYPE_Q4_0)
-    FATTN_VEC_CASES_ALL_D(GGML_TYPE_Q8_0, GGML_TYPE_Q8_0)
-#endif // GGML_SYCL_FA_ALL_QUANTS
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_F16, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 64, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0); return; }
+#endif
+        } break;
+        case 128: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_F16, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_1, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_1, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q8_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_F16, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_F16, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_F16, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_F16, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_F16, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0); return; }
+#else
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_F16, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 128, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0); return; }
+#endif
+        } break;
+        case 256: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_F16, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_1, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_1, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q8_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_F16, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_F16, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_F16, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_F16, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_F16, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0); return; }
+#else
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_F16, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 256, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0); return; }
+#endif
+        } break;
+        case 512: {
+#ifdef GGML_SYCL_FA_ALL_QUANTS
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_F16, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_1, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_1, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q8_0, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_F16, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_1, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_F16, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_1, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_1, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q4_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q8_0, GGML_TYPE_Q4_1); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_F16, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_1, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q8_0, GGML_TYPE_Q5_0); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_F16, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_1, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_1, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q5_1) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1); return; }
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_F16, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_0, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q4_1 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_1, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q5_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_0, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q5_1 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0); return; }
+#else
+            if (type_K == GGML_TYPE_F16  && type_V == GGML_TYPE_F16)  { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_F16, GGML_TYPE_F16); return; }
+            if (type_K == GGML_TYPE_Q4_0 && type_V == GGML_TYPE_Q4_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0); return; }
+            if (type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0) { ggml_sycl_flash_attn_ext_vec_case(ctx, dst, 512, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0); return; }
+#endif
+        } break;
+        default:
+            break;
+    }
 
     GGML_ABORT("Not match KV type in vec");
 }
